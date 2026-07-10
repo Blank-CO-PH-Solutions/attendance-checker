@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' hide Border;
 import '../models/student.dart';
 import '../providers/folder_provider.dart';
 import '../providers/day_provider.dart';
@@ -198,6 +200,36 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _massUpload,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.upload_file, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text(
+                                'Mass Upload',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -245,6 +277,123 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _massUpload() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not read the file'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final excel = Excel.decodeBytes(bytes);
+      final sheet = excel.tables.values.first;
+      if (sheet == null || sheet.rows.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('The file is empty'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final headerRow = sheet.rows.first;
+      final headers = headerRow.map((cell) => cell?.value?.toString().toLowerCase().trim() ?? '').toList();
+
+      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1;
+      for (int i = 0; i < headers.length; i++) {
+        final h = headers[i];
+        if (h.contains('first') && h.contains('name')) firstNameIdx = i;
+        else if (h.contains('last') && h.contains('name')) lastNameIdx = i;
+        else if (h.contains('student') && h.contains('number')) studentNumberIdx = i;
+        else if (h.contains('program')) programYearIdx = i;
+      }
+
+      if (firstNameIdx == -1 || lastNameIdx == -1 || studentNumberIdx == -1 || programYearIdx == -1) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Missing required columns. Need: First Name, Last Name, Student Number, Program & Year'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final students = <Student>[];
+      for (int rowIdx = 1; rowIdx < sheet.rows.length; rowIdx++) {
+        final row = sheet.rows[rowIdx];
+        final firstName = row[firstNameIdx]?.value?.toString().trim() ?? '';
+        final lastName = row[lastNameIdx]?.value?.toString().trim() ?? '';
+        final studentNumber = row[studentNumberIdx]?.value?.toString().trim() ?? '';
+        final programYear = row[programYearIdx]?.value?.toString().trim() ?? '';
+
+        if (firstName.isEmpty || lastName.isEmpty || studentNumber.isEmpty || programYear.isEmpty) continue;
+
+        students.add(Student(
+          id: _uuid.v4(),
+          firstName: firstName,
+          middleName: '',
+          lastName: lastName,
+          studentNumber: studentNumber,
+          year: '',
+          program: programYear,
+        ));
+      }
+
+      if (students.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No valid students found in the file'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final folderProvider = context.read<FolderProvider>();
+      for (final student in students) {
+        folderProvider.addStudent(widget.folderId, student);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${students.length} students uploaded successfully'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error reading file: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

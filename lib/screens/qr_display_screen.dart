@@ -124,6 +124,11 @@ class QrDisplayScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
+                        Image.asset(
+                          'assets/cicslogo.jpeg',
+                          height: 64,
+                        ),
+                        const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -146,6 +151,27 @@ class QrDisplayScreen extends StatelessWidget {
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          student.studentNumber,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          student.year.isEmpty
+                              ? student.program
+                              : '${student.program} ${student.year}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[800],
                           ),
                         ),
                       ],

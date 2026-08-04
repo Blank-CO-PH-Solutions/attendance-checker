@@ -22,6 +22,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
   final _lastNameController = TextEditingController();
   final _studentNumberController = TextEditingController();
   final _programYearController = TextEditingController();
+  final _parentNumberController = TextEditingController();
   final Uuid _uuid = const Uuid();
 
   @override
@@ -30,6 +31,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
     _lastNameController.dispose();
     _studentNumberController.dispose();
     _programYearController.dispose();
+    _parentNumberController.dispose();
     super.dispose();
   }
 
@@ -222,6 +224,15 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                 return null;
                               },
                             ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _parentNumberController,
+                              decoration: _inputDecoration(
+                                "Parent's Number",
+                                Icons.phone,
+                              ),
+                              keyboardType: TextInputType.phone,
+                            ),
                           ],
                         ),
                       ),
@@ -308,6 +319,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
         studentNumber: _studentNumberController.text.trim(),
         year: '',
         program: _programYearController.text.trim(),
+        parentNumber: _parentNumberController.text.trim(),
       );
 
       fp.addStudent(fp.selectedId!, student);
@@ -316,6 +328,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
       _lastNameController.clear();
       _studentNumberController.clear();
       _programYearController.clear();
+      _parentNumberController.clear();
       Navigator.pop(context);
 
       Navigator.push(

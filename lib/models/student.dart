@@ -8,6 +8,7 @@ class Student {
   final String studentNumber;
   final String year;
   final String program;
+  final String parentNumber;
 
   Student({
     required this.id,
@@ -17,6 +18,7 @@ class Student {
     required this.studentNumber,
     required this.year,
     required this.program,
+    this.parentNumber = '',
   });
 
   String get fullName => middleName.isEmpty
@@ -33,6 +35,7 @@ class Student {
     'studentNumber': studentNumber,
     'year': year,
     'program': program,
+    'parentNumber': parentNumber,
   });
 
   factory Student.fromJsonString(String jsonString) {
@@ -48,6 +51,7 @@ class Student {
     'studentNumber': studentNumber,
     'year': year,
     'program': program,
+    'parentNumber': parentNumber,
   };
 
   factory Student.fromMap(Map<String, dynamic> map) {
@@ -59,6 +63,7 @@ class Student {
       studentNumber: map['studentNumber'] ?? '',
       year: map['year'],
       program: map['program'],
+      parentNumber: map['parentNumber'] ?? '',
     );
   }
 }

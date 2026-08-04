@@ -23,6 +23,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
   final _lastNameController = TextEditingController();
   final _studentNumberController = TextEditingController();
   final _programYearController = TextEditingController();
+  final _parentNumberController = TextEditingController();
   final Uuid _uuid = const Uuid();
 
   @override
@@ -31,6 +32,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
     _lastNameController.dispose();
     _studentNumberController.dispose();
     _programYearController.dispose();
+    _parentNumberController.dispose();
     super.dispose();
   }
 
@@ -167,6 +169,15 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                                 return null;
                               },
                             ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _parentNumberController,
+                              decoration: _inputDecoration(
+                                "Parent's Number",
+                                Icons.phone,
+                              ),
+                              keyboardType: TextInputType.phone,
+                            ),
                           ],
                         ),
                       ),
@@ -253,6 +264,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
         studentNumber: _studentNumberController.text.trim(),
         year: '',
         program: _programYearController.text.trim(),
+        parentNumber: _parentNumberController.text.trim(),
       );
 
       folderProvider.addStudent(widget.folderId, student);
@@ -261,6 +273,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       _lastNameController.clear();
       _studentNumberController.clear();
       _programYearController.clear();
+      _parentNumberController.clear();
       Navigator.pop(context);
 
       Navigator.push(
@@ -404,6 +417,9 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       text: student.studentNumber,
     );
     final programYearController = TextEditingController(text: student.program);
+    final parentNumberController = TextEditingController(
+      text: student.parentNumber,
+    );
 
     showModalBottomSheet(
       context: context,
@@ -478,6 +494,15 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                         Icons.school,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: parentNumberController,
+                      decoration: _inputDecoration(
+                        "Parent's Number",
+                        Icons.phone,
+                      ),
+                      keyboardType: TextInputType.phone,
+                    ),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
@@ -492,6 +517,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                             studentNumber: studentNumberController.text.trim(),
                             year: '',
                             program: programYearController.text.trim(),
+                            parentNumber: parentNumberController.text.trim(),
                           );
                           context.read<FolderProvider>().updateStudent(
                             widget.folderId,

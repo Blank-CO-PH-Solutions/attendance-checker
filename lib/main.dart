@@ -12,8 +12,10 @@ import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:firebase_ui_auth/firebase_ui_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
+  await dotenv.load();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -141,7 +143,9 @@ class _AuthGateState extends State<AuthGate> {
                     borderSide: BorderSide(color: brandColor, width: 2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  labelStyle: TextStyle(color: brandColor.withValues(alpha: 0.8)),
+                  labelStyle: TextStyle(
+                    color: brandColor.withValues(alpha: 0.8),
+                  ),
                 ),
                 // Customizes the "Forgot Password" and "Register" toggle links
                 textButtonTheme: TextButtonThemeData(

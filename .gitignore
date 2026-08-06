@@ -46,3 +46,6 @@ app.*.map.json
 
 # Node (migration tooling)
 node_modules/
+
+.env
+.env.local

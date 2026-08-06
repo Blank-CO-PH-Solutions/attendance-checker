@@ -1,3 +1,4 @@
+import 'package:attendance_checker/services/api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -7,6 +8,7 @@ import '../models/student.dart';
 import '../models/attendance_record.dart';
 import '../providers/day_provider.dart';
 import '../providers/folder_provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -23,12 +25,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final TextEditingController _manualInputController = TextEditingController();
   bool _showManualInput = false;
   bool _isAmSelected = true;
+  late final ApiService _api;
 
   bool get _isWeb => kIsWeb;
 
   @override
   void initState() {
     super.initState();
+    _api = ApiService(baseUrl: 'https://api.sms-gate.app/3rdparty/v1');
+
     if (!_isWeb) {
       _controller = MobileScannerController(
         detectionSpeed: DetectionSpeed.normal,
@@ -84,7 +89,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
 
     if (foundStudent != null) {
-      _autoRecordAttendance(foundStudent);
+      var record = _autoRecordAttendance(foundStudent);
+
+      var name = foundStudent.fullName;
+      var type = record?.type;
+      var time =
+          '${record?.timestamp.hour}:${record?.timestamp.minute}:${record?.timestamp.second} ${_isAmSelected ? 'AM' : 'PM'}';
+      var date =
+          '${record?.timestamp.year}/${record?.timestamp.month}/${record?.timestamp.day}';
+
+      _api.postJson(
+        '/messages',
+        headers: {
+          'Authorization':
+              'Basic ${dotenv.get('SMS_GATEWAY_USERNAME')}:${dotenv.get('SMS_GATEWAY_PASSWORD')}',
+        },
+        body: {
+          'textMessage':
+              'Notice Your Son/Daughter, $name has $type at Saint Joseph\'s College of Baggao at $time on $date',
+          'phoneNumbers': [foundStudent.parentNumber],
+        },
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -106,12 +131,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
-  void _autoRecordAttendance(Student student) {
+  AttendanceRecord? _autoRecordAttendance(Student student) {
     final eventProvider = context.read<AttendanceEventProvider>();
 
     if (eventProvider.selectedEventId == null) {
       _showErrorSnackBar('Please select an Event first');
-      return;
+      return null;
     }
 
     final AttendanceType type;
@@ -125,15 +150,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
 
     if (type == AttendanceType.timeIn &&
-        eventProvider.hasTimeIn(eventProvider.selectedEventId!, student.id, isAm: _isAmSelected)) {
-      _showWarningSnackBar('${student.fullName} already timed in for ${_isAmSelected ? "AM" : "PM"}');
-      return;
+        eventProvider.hasTimeIn(
+          eventProvider.selectedEventId!,
+          student.id,
+          isAm: _isAmSelected,
+        )) {
+      _showWarningSnackBar(
+        '${student.fullName} already timed in for ${_isAmSelected ? "AM" : "PM"}',
+      );
+      return null;
     }
 
     if (type == AttendanceType.timeOut &&
-        eventProvider.hasTimeOut(eventProvider.selectedEventId!, student.id, isAm: _isAmSelected)) {
-      _showWarningSnackBar('${student.fullName} already timed out for ${_isAmSelected ? "AM" : "PM"}');
-      return;
+        eventProvider.hasTimeOut(
+          eventProvider.selectedEventId!,
+          student.id,
+          isAm: _isAmSelected,
+        )) {
+      _showWarningSnackBar(
+        '${student.fullName} already timed out for ${_isAmSelected ? "AM" : "PM"}',
+      );
+      return null;
     }
 
     final now = DateTime.now();
@@ -148,7 +185,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
         hour = hour + 12;
       }
     }
-    final adjustedTime = DateTime(now.year, now.month, now.day, hour, now.minute, now.second);
+    final adjustedTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      now.minute,
+      now.second,
+    );
 
     final record = AttendanceRecord(
       id: now.millisecondsSinceEpoch.toString(),
@@ -188,6 +232,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
 
     _resetScanner();
+
+    return record;
   }
 
   void _showErrorSnackBar(String message) {
@@ -584,9 +630,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
         }
 
         filteredRecords = filteredRecords
-            .where((r) => _isAmSelected
-                ? r.timestamp.hour < 12
-                : r.timestamp.hour >= 12)
+            .where(
+              (r) => _isAmSelected
+                  ? r.timestamp.hour < 12
+                  : r.timestamp.hour >= 12,
+            )
             .toList();
 
         if (filteredRecords.isEmpty) {
@@ -740,4 +788,4 @@ class _ScannerScreenState extends State<ScannerScreen> {
       ),
     );
   }
-  }
+}

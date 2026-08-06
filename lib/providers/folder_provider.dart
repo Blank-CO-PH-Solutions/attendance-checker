@@ -71,7 +71,6 @@ class Folder {
     'ownerId': ownerId,
     'sharedWith': sharedWith,
     'createdAt': createdAt.toIso8601String(),
-    'students': students.map((s) => s.toJsonString()).toList(),
     'files': files.map((f) => f.toJson()).toList(),
   };
 
@@ -151,7 +150,7 @@ class FolderProvider extends ChangeNotifier {
 
   Future<void> _loadLocal() async {
     if (_firestoreInitialized) return;
-    
+
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('folders');
     if (data != null && data.isNotEmpty) {
@@ -159,7 +158,11 @@ class FolderProvider extends ChangeNotifier {
           .map((e) => Folder.fromJson(e))
           .toList();
       final seenIds = <String>{};
-      _folders = newFolders.where((f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id)).toList();
+      _folders = newFolders
+          .where(
+            (f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
+          )
+          .toList();
       if (_folders.isNotEmpty) _selectedId = _folders.first.id;
       notifyListeners();
     }
@@ -167,20 +170,33 @@ class FolderProvider extends ChangeNotifier {
 
   void _listenToFirestore() {
     _firestoreInitialized = true;
-    FirebaseFirestore.instance.collection('folders').snapshots().listen((snapshot) {
-      final newFolders = snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
-      final seenIds = <String>{};
-      _folders = newFolders.where((f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id)).toList();
-      _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _saveLocal();
-      if (_folders.isNotEmpty && _selectedId == null) {
-        _selectedId = _folders.first.id;
-      }
-      notifyListeners();
-    }, onError: (e) {
-      debugPrint('Error listening to Firestore: $e');
-      _loadLocal();
-    });
+    FirebaseFirestore.instance
+        .collection('folders')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final newFolders = snapshot.docs
+                .map((doc) => Folder.fromJson(doc.data()))
+                .toList();
+            final seenIds = <String>{};
+            _folders = newFolders
+                .where(
+                  (f) =>
+                      f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
+                )
+                .toList();
+            _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            _saveLocal();
+            if (_folders.isNotEmpty && _selectedId == null) {
+              _selectedId = _folders.first.id;
+            }
+            notifyListeners();
+          },
+          onError: (e) {
+            debugPrint('Error listening to Firestore: $e');
+            _loadLocal();
+          },
+        );
   }
 
   Future<void> refresh() async {
@@ -188,9 +204,15 @@ class FolderProvider extends ChangeNotifier {
       final snapshot = await FirebaseFirestore.instance
           .collection('folders')
           .get();
-      final newFolders = snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
+      final newFolders = snapshot.docs
+          .map((doc) => Folder.fromJson(doc.data()))
+          .toList();
       final seenIds = <String>{};
-      _folders = newFolders.where((f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id)).toList();
+      _folders = newFolders
+          .where(
+            (f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
+          )
+          .toList();
       _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       _saveLocal();
       notifyListeners();
@@ -277,15 +299,29 @@ class FolderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addStudent(String folderId, Student student) {
+  Future<void> addStudent(String folderId, Student student) async {
     final i = _folders.indexWhere((f) => f.id == folderId);
     if (i != -1) {
-      final updatedStudents = List<Student>.from(_folders[i].students)
-        ..add(student);
-      _folders[i] = _folders[i].copyWith(students: updatedStudents);
+      _folders[i] = _folders[i].copyWith(
+        students: [..._folders[i].students, student],
+      );
       _saveLocal();
       _saveToFirestore(_folders[i]);
       notifyListeners();
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(student.id)
+          .set({
+            ...student.toMap(),
+            'folderId': folderId,
+            'ownerId': _currentUserId,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+    } catch (e) {
+      debugPrint('Error saving student: $e');
     }
   }
 
@@ -301,7 +337,7 @@ class FolderProvider extends ChangeNotifier {
     }
   }
 
-  void removeStudent(String folderId, String studentId) {
+  Future<void> removeStudent(String folderId, String studentId) async {
     final i = _folders.indexWhere((f) => f.id == folderId);
     if (i != -1) {
       final updatedStudents = _folders[i].students
@@ -310,11 +346,17 @@ class FolderProvider extends ChangeNotifier {
       _folders[i] = _folders[i].copyWith(students: updatedStudents);
       _saveLocal();
       _saveToFirestore(_folders[i]);
+
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(studentId)
+          .delete();
+
       notifyListeners();
     }
   }
 
-  void updateStudent(String folderId, Student updatedStudent) {
+  Future<void> updateStudent(String folderId, Student updatedStudent) async {
     final i = _folders.indexWhere((f) => f.id == folderId);
     if (i != -1) {
       final studentIndex = _folders[i].students.indexWhere(
@@ -326,6 +368,12 @@ class FolderProvider extends ChangeNotifier {
         _folders[i] = _folders[i].copyWith(students: updatedStudents);
         _saveLocal();
         _saveToFirestore(_folders[i]);
+
+        await FirebaseFirestore.instance
+            .collection('students')
+            .doc(updatedStudent.id)
+            .update(updatedStudent.toMap());
+
         notifyListeners();
       }
     }

@@ -21,5 +21,8 @@
   "bugs": {
     "url": "https://github.com/Lazy-Shadow/attendance-checker/issues"
   },
-  "homepage": "https://github.com/Lazy-Shadow/attendance-checker#readme"
+  "homepage": "https://github.com/Lazy-Shadow/attendance-checker#readme",
+  "dependencies": {
+    "firebase-admin": "^13.10.0"
+  }
 }

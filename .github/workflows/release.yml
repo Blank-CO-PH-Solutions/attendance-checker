@@ -36,6 +36,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Create .env from secrets
+        run: |
+          echo "SMS_GATEWAY_URL=${{ secrets.SMS_GATEWAY_URL }}" > .env
+          echo "SMS_GATEWAY_USERNAME=${{ secrets.SMS_GATEWAY_USERNAME }}" >> .env
+          echo "SMS_GATEWAY_PASSWORD=${{ secrets.SMS_GATEWAY_PASSWORD }}" >> .env
+
       - name: Build Android APK
         run: flutter build apk --release
 

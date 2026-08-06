@@ -6,6 +6,8 @@ import '../providers/day_provider.dart';
 import 'qr_generator_screen.dart';
 import 'scanner_screen.dart';
 import 'attendance_screen.dart';
+import 'analytics_report_screen.dart';
+import 'student_report_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String role;
@@ -321,6 +323,38 @@ class _HomeScreenState extends State<HomeScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => const AttendanceScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildMenuCard(
+                context,
+                icon: Icons.insert_chart,
+                title: 'Analytics Report',
+                subtitle: 'View attendance graphs and reports',
+                color: const Color(0xFF457507),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AnalyticsReportScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildMenuCard(
+                context,
+                icon: Icons.person_search,
+                title: 'Student Report',
+                subtitle: 'View student time in/out logs',
+                color: const Color(0xFF0EA5E9),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StudentReportScreen(),
                     ),
                   );
                 },

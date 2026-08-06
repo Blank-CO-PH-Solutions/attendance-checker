@@ -331,13 +331,14 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       final headerRow = sheet.rows.first;
       final headers = headerRow.map((cell) => cell?.value?.toString().toLowerCase().trim() ?? '').toList();
 
-      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1;
+      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1, parentNumberIdx = -1;
       for (int i = 0; i < headers.length; i++) {
         final h = headers[i];
         if (h.contains('first') && h.contains('name')) firstNameIdx = i;
         else if (h.contains('last') && h.contains('name')) lastNameIdx = i;
         else if (h.contains('student') && h.contains('number')) studentNumberIdx = i;
         else if (h.contains('program')) programYearIdx = i;
+        else if (h.contains('parent')) parentNumberIdx = i;
       }
 
       if (firstNameIdx == -1 || lastNameIdx == -1 || studentNumberIdx == -1 || programYearIdx == -1) {
@@ -359,6 +360,9 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
         final lastName = row[lastNameIdx]?.value?.toString().trim() ?? '';
         final studentNumber = row[studentNumberIdx]?.value?.toString().trim() ?? '';
         final programYear = row[programYearIdx]?.value?.toString().trim() ?? '';
+        final parentNumber = parentNumberIdx == -1
+            ? ''
+            : (row[parentNumberIdx]?.value?.toString().trim() ?? '');
 
         if (firstName.isEmpty || lastName.isEmpty || studentNumber.isEmpty || programYear.isEmpty) continue;
 
@@ -370,6 +374,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
           studentNumber: studentNumber,
           year: '',
           program: programYear,
+          parentNumber: parentNumber,
         ));
       }
 

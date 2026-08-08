@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import '../models/student.dart';
+import '../widgets/student_qr_card.dart';
 
 class QrDisplayScreen extends StatelessWidget {
   final Student student;
@@ -109,74 +109,7 @@ class QrDisplayScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 RepaintBoundary(
                   key: _qrKey,
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Image.asset(
-                          'assets/cicslogo.jpeg',
-                          height: 64,
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey[200]!, width: 2),
-                          ),
-                          child: QrImageView(
-                            data: student.studentNumber,
-                            version: QrVersions.auto,
-                            size: 220.0,
-                            backgroundColor: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '${student.lastName}, ${student.firstName}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          student.studentNumber,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          student.year.isEmpty
-                              ? student.program
-                              : '${student.program} ${student.year}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  child: StudentQrCard(student: student),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(

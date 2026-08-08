@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:attendance_checker/services/api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -74,7 +76,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
-  void _processQrCode(String qrData) {
+  void _processQrCode(String qrData) async {
     final folderProvider = context.read<FolderProvider>();
     Student? foundStudent;
 
@@ -91,25 +93,48 @@ class _ScannerScreenState extends State<ScannerScreen> {
     if (foundStudent != null) {
       var record = _autoRecordAttendance(foundStudent);
 
-      var name = foundStudent.fullName;
-      var type = record?.type;
-      var time =
-          '${record?.timestamp.hour}:${record?.timestamp.minute}:${record?.timestamp.second} ${_isAmSelected ? 'AM' : 'PM'}';
-      var date =
-          '${record?.timestamp.year}/${record?.timestamp.month}/${record?.timestamp.day}';
+      if (record != null && foundStudent.parentNumber.isNotEmpty) {
+        var name = foundStudent.fullName;
+        var type = record.type;
+        var time =
+            '${record.timestamp.hour}:${record.timestamp.minute}:${record.timestamp.second} ${_isAmSelected ? 'AM' : 'PM'}';
+        var date =
+            '${record.timestamp.year}/${record.timestamp.month}/${record.timestamp.day}';
 
-      _api.postJson(
-        '/messages',
-        headers: {
-          'Authorization':
-              'Basic ${dotenv.get('SMS_GATEWAY_USERNAME')}:${dotenv.get('SMS_GATEWAY_PASSWORD')}',
-        },
-        body: {
-          'textMessage':
-              'Notice Your Son/Daughter, $name has $type at Saint Joseph\'s College of Baggao at $time on $date',
-          'phoneNumbers': [foundStudent.parentNumber],
-        },
-      );
+        try {
+          var username = dotenv.get('SMS_GATEWAY_USERNAME');
+          var password = dotenv.get('SMS_GATEWAY_PASSWORD');
+
+          var credentials = "$username:$password";
+
+          var normalizedNumbers = [];
+          if (foundStudent.parentNumber.startsWith('09')) {
+            var num = '+63${foundStudent.parentNumber.replaceFirst('09', '9')}';
+            normalizedNumbers.add(num);
+          } else if (foundStudent.parentNumber.startsWith('+63')) {
+            normalizedNumbers.add(foundStudent.parentNumber);
+          } else {
+            debugPrint("Number format isn't accepted.");
+          }
+
+          await _api.postJson(
+            '/messages',
+            headers: {
+              'Authorization':
+                  'Basic ${base64Encode(utf8.encode(credentials))}',
+            },
+            body: {
+              'textMessage': {
+                'text':
+                    'Notice Your Son/Daughter, $name has $type at Saint Joseph\'s College of Baggao at $time on $date',
+              },
+              'phoneNumbers': [normalizedNumbers],
+            },
+          );
+        } catch (e) {
+          debugPrint("Env's are not loaded: $e");
+        }
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

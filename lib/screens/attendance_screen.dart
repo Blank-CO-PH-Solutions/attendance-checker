@@ -57,7 +57,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ElevatedButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                context.read<AttendanceEventProvider>().createEvent(controller.text.trim());
+                context.read<AttendanceEventProvider>().createEvent(
+                  controller.text.trim(),
+                );
                 Navigator.pop(context);
               }
             },
@@ -107,7 +109,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, AttendanceEventProvider eventProvider) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    AttendanceEventProvider eventProvider,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -168,7 +173,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildContent(BuildContext context, AttendanceEventProvider eventProvider) {
+  Widget _buildContent(
+    BuildContext context,
+    AttendanceEventProvider eventProvider,
+  ) {
     final searchQuery = _searchController.text.toLowerCase();
     final filteredEvents = eventProvider.events.where((event) {
       if (searchQuery.isEmpty) return true;

@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/student.dart';
+import '../widgets/student_qr_card.dart';
 
 class UploadedFile {
   final String id;
@@ -72,6 +73,16 @@ class Folder {
     'sharedWith': sharedWith,
     'createdAt': createdAt.toIso8601String(),
     'files': files.map((f) => f.toJson()).toList(),
+    'students': students.map((s) => s.toJsonString()).toList(),
+  };
+
+  Map<String, dynamic> toFirestoreJson() => {
+    'id': id,
+    'name': name,
+    'ownerId': ownerId,
+    'sharedWith': sharedWith,
+    'createdAt': createdAt.toIso8601String(),
+    'files': files.map((f) => f.toJson()).toList(),
   };
 
   factory Folder.fromJson(Map<String, dynamic> json) {
@@ -124,6 +135,8 @@ class Folder {
 
 class FolderProvider extends ChangeNotifier {
   List<Folder> _folders = [];
+  List<Folder> _foldersSnapshot = [];
+  Map<String, List<Student>> _studentsByFolder = {};
   String? _currentUserId;
   String? _selectedId;
   bool _firestoreInitialized = false;
@@ -175,47 +188,88 @@ class FolderProvider extends ChangeNotifier {
         .snapshots()
         .listen(
           (snapshot) {
-            final newFolders = snapshot.docs
+            _foldersSnapshot = snapshot.docs
                 .map((doc) => Folder.fromJson(doc.data()))
                 .toList();
-            final seenIds = <String>{};
-            _folders = newFolders
-                .where(
-                  (f) =>
-                      f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
-                )
-                .toList();
-            _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-            _saveLocal();
-            if (_folders.isNotEmpty && _selectedId == null) {
-              _selectedId = _folders.first.id;
-            }
-            notifyListeners();
+            _reconcileFolders();
           },
           onError: (e) {
-            debugPrint('Error listening to Firestore: $e');
+            debugPrint('Error listening to folders: $e');
             _loadLocal();
+          },
+        );
+
+    FirebaseFirestore.instance
+        .collection('students')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final byFolder = <String, List<Student>>{};
+            for (final doc in snapshot.docs) {
+              final data = doc.data();
+              final folderId = data['folderId'];
+              if (folderId == null) continue;
+              byFolder
+                  .putIfAbsent(folderId.toString(), () => [])
+                  .add(Student.fromMap(data));
+            }
+            _studentsByFolder = byFolder;
+            _reconcileFolders();
+          },
+          onError: (e) {
+            debugPrint('Error listening to students: $e');
           },
         );
   }
 
+  void _reconcileFolders() {
+    if (_foldersSnapshot.isEmpty) return;
+    final newFolders = _foldersSnapshot.map((f) {
+      final students = (_studentsByFolder[f.id] ?? f.students).toList()
+        ..sort((a, b) => a.fullName.compareTo(b.fullName));
+      return f.copyWith(students: students);
+    }).toList();
+    final seenIds = <String>{};
+    _folders = newFolders
+        .where(
+          (f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
+        )
+        .toList();
+    _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _saveLocal();
+    if (_folders.isNotEmpty && _selectedId == null) {
+      _selectedId = _folders.first.id;
+    }
+    notifyListeners();
+  }
+
   Future<void> refresh() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final foldersFuture = FirebaseFirestore.instance
           .collection('folders')
           .get();
-      final newFolders = snapshot.docs
+      final studentsFuture = FirebaseFirestore.instance
+          .collection('students')
+          .get();
+      final results = await Future.wait([foldersFuture, studentsFuture]);
+      final foldersSnapshot = results[0];
+      final studentsSnapshot = results[1];
+
+      _foldersSnapshot = foldersSnapshot.docs
           .map((doc) => Folder.fromJson(doc.data()))
           .toList();
-      final seenIds = <String>{};
-      _folders = newFolders
-          .where(
-            (f) => f.id.isNotEmpty && f.name.isNotEmpty && seenIds.add(f.id),
-          )
-          .toList();
-      _folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _saveLocal();
-      notifyListeners();
+
+      final byFolder = <String, List<Student>>{};
+      for (final doc in studentsSnapshot.docs) {
+        final data = doc.data();
+        final folderId = data['folderId'];
+        if (folderId == null) continue;
+        byFolder
+            .putIfAbsent(folderId.toString(), () => [])
+            .add(Student.fromMap(data));
+      }
+      _studentsByFolder = byFolder;
+      _reconcileFolders();
     } catch (e) {
       debugPrint('Error refreshing folders: $e');
     }
@@ -234,7 +288,7 @@ class FolderProvider extends ChangeNotifier {
       await FirebaseFirestore.instance
           .collection('folders')
           .doc(folder.id)
-          .set(folder.toJson());
+          .set(folder.toFirestoreJson());
     } catch (e) {
       debugPrint('Error saving to Firestore: $e');
     }
@@ -447,26 +501,25 @@ class FolderProvider extends ChangeNotifier {
 
   Future<void> downloadFolder(BuildContext context, Folder folder) async {
     try {
+      await precacheImage(
+        const AssetImage('assets/cicslogo.jpeg'),
+        context,
+      );
+
       final path = await getDownloadPath();
       final folderDir = Directory('$path/${folder.fileName}_QRCodes');
       if (await folderDir.exists()) await folderDir.delete(recursive: true);
       await folderDir.create();
 
       for (final student in folder.students) {
-        final image = await QrPainter(
-          data: student.studentNumber,
-          version: QrVersions.auto,
-        ).toImage(300);
-        final bytes = (await image.toByteData(
-          format: ui.ImageByteFormat.png,
-        ))!.buffer.asUint8List();
+        final bytes = await _captureStudentCard(context, student);
         await File(
           '${folderDir.path}/${student.fileName}.png',
         ).writeAsBytes(bytes);
       }
 
       final manifest = folder.students
-          .map((s) => '${s.fullName}\n${s.program} ${s.year}')
+          .map((s) => '${s.fullName}\n${s.studentNumber}\n${s.program} ${s.year}')
           .join('\n---\n');
       await File('${folderDir.path}/manifest.txt').writeAsString(manifest);
 
@@ -480,6 +533,36 @@ class FolderProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Download error: $e');
+    }
+  }
+
+  Future<List<int>> _captureStudentCard(
+    BuildContext context,
+    Student student,
+  ) async {
+    final boundaryKey = GlobalKey();
+    final overlay = Overlay.of(context);
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: -4000,
+        top: -4000,
+        child: RepaintBoundary(
+          key: boundaryKey,
+          child: StudentQrCard(student: student),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      final boundary = boundaryKey.currentContext!.findRenderObject()
+          as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData!.buffer.asUint8List();
+    } finally {
+      entry.remove();
+      await WidgetsBinding.instance.endOfFrame;
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/student.dart';
@@ -10,8 +11,10 @@ class AttendanceProvider extends ChangeNotifier {
   List<AttendanceRecord> _records = [];
   final Uuid _uuid = const Uuid();
   String? _currentUserId;
+  bool _isOnline = true;
 
   List<AttendanceRecord> get records => _records;
+  bool get isOnline => _isOnline;
 
   List<AttendanceRecord> get timeInRecords =>
       _records.where((r) => r.type == AttendanceType.timeIn).toList();
@@ -20,12 +23,25 @@ class AttendanceProvider extends ChangeNotifier {
       _records.where((r) => r.type == AttendanceType.timeOut).toList();
 
   AttendanceProvider() {
+    _initConnectivity();
     _loadLocalRecords();
   }
 
   void setUserId(String userId) {
     _currentUserId = userId;
     _loadFromFirestore();
+  }
+
+  void _initConnectivity() {
+    Connectivity().onConnectivityChanged.listen((result) {
+      final wasOffline = !_isOnline;
+      _isOnline = result.isNotEmpty && !result.contains(ConnectivityResult.none);
+
+      if (wasOffline && _isOnline) {
+        _syncPendingActions();
+      }
+      notifyListeners();
+    });
   }
 
   Future<void> _loadLocalRecords() async {
@@ -100,6 +116,100 @@ class AttendanceProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _clearFromFirestore() async {
+    if (_currentUserId == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUserId)
+          .collection('records')
+          .get();
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      debugPrint('Error clearing from Firestore: $e');
+    }
+  }
+
+  Future<void> _syncPendingActions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingData = prefs.getString('pending_attendance_records');
+
+      if (pendingData == null || pendingData.isEmpty) {
+        _isOnline = true;
+        notifyListeners();
+        return;
+      }
+
+      final List<dynamic> pending = jsonDecode(pendingData);
+      var remaining = List<dynamic>.from(pending);
+
+      for (var i = 0; i < pending.length; i++) {
+        try {
+          await _executeAction(Map<String, dynamic>.from(pending[i]));
+          remaining = List<dynamic>.from(pending.sublist(i + 1));
+        } catch (e) {
+          debugPrint('Attendance action failed, keeping queued: $e');
+          break;
+        }
+      }
+
+      if (remaining.isEmpty) {
+        await prefs.remove('pending_attendance_records');
+      } else {
+        await prefs.setString(
+          'pending_attendance_records',
+          jsonEncode(remaining),
+        );
+      }
+
+      _isOnline = true;
+      notifyListeners();
+      await _loadFromFirestore();
+    } catch (e) {
+      debugPrint('Error syncing pending attendance records: $e');
+    }
+  }
+
+  Future<void> _executeAction(Map<String, dynamic> action) async {
+    final type = action['type'] as String;
+
+    switch (type) {
+      case 'add_record':
+        final record = AttendanceRecord.fromMap(
+          Map<String, dynamic>.from(action['record']),
+        );
+        await _saveToFirestore(record);
+        break;
+      case 'delete_record':
+        await _deleteFromFirestore(action['recordId'] as String);
+        break;
+      case 'clear_records':
+        await _clearFromFirestore();
+        break;
+    }
+  }
+
+  Future<void> _addPendingAction(Map<String, dynamic> action) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingData = prefs.getString('pending_attendance_records');
+      List<dynamic> pending = [];
+
+      if (pendingData != null && pendingData.isNotEmpty) {
+        pending = jsonDecode(pendingData);
+      }
+
+      pending.add({...action, 'timestamp': DateTime.now().toIso8601String()});
+      await prefs.setString('pending_attendance_records', jsonEncode(pending));
+    } catch (e) {
+      debugPrint('Error adding pending attendance action: $e');
+    }
+  }
+
   void addRecord(Student student, AttendanceType type) {
     final record = AttendanceRecord(
       id: _uuid.v4(),
@@ -109,20 +219,60 @@ class AttendanceProvider extends ChangeNotifier {
     );
     _records.insert(0, record);
     _saveLocalRecords();
-    _saveToFirestore(record);
+
+    if (_currentUserId == null) return;
+
+    if (_isOnline) {
+      try {
+        _saveToFirestore(record);
+      } catch (e) {
+        _addPendingAction({
+          'type': 'add_record',
+          'record': jsonDecode(record.toJsonString()),
+        });
+      }
+    } else {
+      _addPendingAction({
+        'type': 'add_record',
+        'record': jsonDecode(record.toJsonString()),
+      });
+    }
     notifyListeners();
   }
 
   void clearRecords() {
     _records.clear();
     _saveLocalRecords();
+
+    if (_currentUserId != null) {
+      if (_isOnline) {
+        try {
+          _clearFromFirestore();
+        } catch (e) {
+          _addPendingAction({'type': 'clear_records'});
+        }
+      } else {
+        _addPendingAction({'type': 'clear_records'});
+      }
+    }
     notifyListeners();
   }
 
   void deleteRecord(String recordId) {
     _records.removeWhere((r) => r.id == recordId);
     _saveLocalRecords();
-    _deleteFromFirestore(recordId);
+
+    if (_currentUserId != null) {
+      if (_isOnline) {
+        try {
+          _deleteFromFirestore(recordId);
+        } catch (e) {
+          _addPendingAction({'type': 'delete_record', 'recordId': recordId});
+        }
+      } else {
+        _addPendingAction({'type': 'delete_record', 'recordId': recordId});
+      }
+    }
     notifyListeners();
   }
 }

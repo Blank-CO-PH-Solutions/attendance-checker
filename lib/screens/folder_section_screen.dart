@@ -23,7 +23,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
   final _lastNameController = TextEditingController();
   final _studentNumberController = TextEditingController();
   final _programYearController = TextEditingController();
-  final _parentNumberController = TextEditingController();
   final Uuid _uuid = const Uuid();
 
   @override
@@ -32,7 +31,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
     _lastNameController.dispose();
     _studentNumberController.dispose();
     _programYearController.dispose();
-    _parentNumberController.dispose();
     super.dispose();
   }
 
@@ -170,14 +168,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                               },
                             ),
                             const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _parentNumberController,
-                              decoration: _inputDecoration(
-                                "Parent's Number",
-                                Icons.phone,
-                              ),
-                              keyboardType: TextInputType.phone,
-                            ),
                           ],
                         ),
                       ),
@@ -264,7 +254,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
         studentNumber: _studentNumberController.text.trim(),
         year: '',
         program: _programYearController.text.trim(),
-        parentNumber: _parentNumberController.text.trim(),
       );
 
       folderProvider.addStudent(widget.folderId, student);
@@ -273,7 +262,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       _lastNameController.clear();
       _studentNumberController.clear();
       _programYearController.clear();
-      _parentNumberController.clear();
       Navigator.pop(context);
 
       Navigator.push(
@@ -331,14 +319,13 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       final headerRow = sheet.rows.first;
       final headers = headerRow.map((cell) => cell?.value?.toString().toLowerCase().trim() ?? '').toList();
 
-      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1, parentNumberIdx = -1;
+      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1;
       for (int i = 0; i < headers.length; i++) {
         final h = headers[i];
         if (h.contains('first') && h.contains('name')) firstNameIdx = i;
         else if (h.contains('last') && h.contains('name')) lastNameIdx = i;
         else if (h.contains('student') && h.contains('number')) studentNumberIdx = i;
         else if (h.contains('program')) programYearIdx = i;
-        else if (h.contains('parent')) parentNumberIdx = i;
       }
 
       if (firstNameIdx == -1 || lastNameIdx == -1 || studentNumberIdx == -1 || programYearIdx == -1) {
@@ -360,9 +347,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
         final lastName = row[lastNameIdx]?.value?.toString().trim() ?? '';
         final studentNumber = row[studentNumberIdx]?.value?.toString().trim() ?? '';
         final programYear = row[programYearIdx]?.value?.toString().trim() ?? '';
-        final parentNumber = parentNumberIdx == -1
-            ? ''
-            : (row[parentNumberIdx]?.value?.toString().trim() ?? '');
 
         if (firstName.isEmpty || lastName.isEmpty || studentNumber.isEmpty || programYear.isEmpty) continue;
 
@@ -374,7 +358,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
           studentNumber: studentNumber,
           year: '',
           program: programYear,
-          parentNumber: parentNumber,
         ));
       }
 
@@ -422,9 +405,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
       text: student.studentNumber,
     );
     final programYearController = TextEditingController(text: student.program);
-    final parentNumberController = TextEditingController(
-      text: student.parentNumber,
-    );
 
     showModalBottomSheet(
       context: context,
@@ -500,14 +480,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: parentNumberController,
-                      decoration: _inputDecoration(
-                        "Parent's Number",
-                        Icons.phone,
-                      ),
-                      keyboardType: TextInputType.phone,
-                    ),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
@@ -522,7 +494,6 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                             studentNumber: studentNumberController.text.trim(),
                             year: '',
                             program: programYearController.text.trim(),
-                            parentNumber: parentNumberController.text.trim(),
                           );
                           context.read<FolderProvider>().updateStudent(
                             widget.folderId,
@@ -733,39 +704,39 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
               ),
             );
 
-            if (folder.students.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.qr_code_2, size: 64, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No students yet',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap + to add a student',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
             return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: folder.students.length,
-            itemBuilder: (context, index) {
-              final student = folder.students[index];
+              padding: const EdgeInsets.all(16),
+              itemCount: folder.students.isEmpty ? 1 : folder.students.length,
+              itemBuilder: (context, index) {
+                if (folder.students.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.qr_code_2, size: 64, color: Colors.grey[300]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No students yet',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tap + to add a student',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final student = folder.students[index];
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(

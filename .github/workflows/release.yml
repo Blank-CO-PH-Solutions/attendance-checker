@@ -36,12 +36,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Create .env from secrets
-        run: |
-          echo "SMS_GATEWAY_URL=${{ secrets.SMS_GATEWAY_URL }}" > .env
-          echo "SMS_GATEWAY_USERNAME=${{ secrets.SMS_GATEWAY_USERNAME }}" >> .env
-          echo "SMS_GATEWAY_PASSWORD=${{ secrets.SMS_GATEWAY_PASSWORD }}" >> .env
-
       - name: Build Android APK
         run: flutter build apk --release
 
@@ -52,14 +46,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk
           retention-days: 30
 
       - name: Upload App Bundle
         uses: actions/upload-artifact@v4
         with:
           name: app-bundle
-          path: build/app/outputs/bundle/release/app-release.aab
+          path: build/app/outputs/bundle/release/*.aab
           retention-days: 30
 
   release:
@@ -77,7 +71,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/apk/app-release.apk
-            artifacts/app-bundle/app-release.aab
+            artifacts/apk/*.apk
+            artifacts/app-bundle/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

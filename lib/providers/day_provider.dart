@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -36,6 +37,14 @@ class AttendanceEvent {
     'records': records.map((r) => r.toMap()).toList(),
   };
 
+  Map<String, dynamic> toFirestoreMap() => {
+    'id': id,
+    'name': name,
+    'ownerId': ownerId,
+    'sharedWith': sharedWith,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+
   factory AttendanceEvent.fromMap(Map<String, dynamic> map) {
     DateTime createdAt;
     final rawCreatedAt = map['createdAt'];
@@ -46,7 +55,7 @@ class AttendanceEvent {
     } else {
       createdAt = DateTime.now();
     }
-    
+
     return AttendanceEvent(
       id: map['id'] ?? '',
       name: map['name'] ?? '',
@@ -71,7 +80,7 @@ class AttendanceEvent {
     } else {
       createdAt = DateTime.now();
     }
-    
+
     return AttendanceEvent(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
@@ -119,8 +128,10 @@ class AttendanceEventProvider extends ChangeNotifier {
   String? _currentUserId;
   bool _isLoading = true;
   bool _isOnline = true;
-  bool _firestoreInitialized = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final Map<String, List<AttendanceRecord>> _recordsByEvent = {};
+  final Map<String, StreamSubscription<QuerySnapshot>> _recordSubs = {};
 
   List<AttendanceEvent> get events => _events;
   String? get selectedEventId => _selectedEventId;
@@ -138,6 +149,7 @@ class AttendanceEventProvider extends ChangeNotifier {
 
   AttendanceEventProvider() {
     _initConnectivity();
+    _loadLocal();
   }
 
   void setUserId(String userId) {
@@ -157,17 +169,24 @@ class AttendanceEventProvider extends ChangeNotifier {
     });
   }
 
+  CollectionReference<Map<String, dynamic>> _recordsRef(String eventId) {
+    return _firestore
+        .collection('attendance_events')
+        .doc(eventId)
+        .collection('records');
+  }
+
   Future<void> _loadLocal() async {
-    if (_firestoreInitialized) return;
-    
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedData = prefs.getString('cached_events');
       if (cachedData != null && cachedData.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(cachedData);
-        final newEvents = decoded.map((json) => AttendanceEvent.fromJson(json)).toList();
+        final newEvents =
+            decoded.map((json) => AttendanceEvent.fromJson(json)).toList();
         final seenIds = <String>{};
-        _events = newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
+        _events =
+            newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
         _events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       }
       if (_events.isNotEmpty && _selectedEventId == null) {
@@ -180,39 +199,117 @@ class AttendanceEventProvider extends ChangeNotifier {
   }
 
   void _listenToFirestore() {
-    _firestoreInitialized = true;
     _isLoading = true;
     notifyListeners();
 
-    _firestore.collection('attendance_events').snapshots().listen((snapshot) {
-      final newEvents = snapshot.docs.map((doc) => AttendanceEvent.fromMap(doc.data())).toList();
-      final seenIds = <String>{};
-      _events = newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
-      _events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _cacheLocally();
-      if (_events.isNotEmpty && _selectedEventId == null) {
-        _selectedEventId = _events.first.id;
+    _firestore.collection('attendance_events').snapshots().listen(
+      (snapshot) {
+        final newEvents =
+            snapshot.docs
+                .map((doc) => AttendanceEvent.fromMap(doc.data()))
+                .toList();
+        final seenIds = <String>{};
+        _events =
+            newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
+        _events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _syncRecordListeners();
+        _applyRecordsToEvents();
+        _cacheLocally();
+        if (_events.isNotEmpty && _selectedEventId == null) {
+          _selectedEventId = _events.first.id;
+        }
+        _isLoading = false;
+        notifyListeners();
+      },
+      onError: (e) {
+        debugPrint('Error listening to Firestore: $e');
+        _isOnline = false;
+        _loadLocal();
+      },
+    );
+
+    _syncRecordListeners();
+  }
+
+  void _syncRecordListeners() {
+    final ids = _events.map((e) => e.id).toSet();
+
+    for (final id in _recordSubs.keys.toList()) {
+      if (!ids.contains(id)) {
+        _recordSubs.remove(id)!.cancel();
+        _recordsByEvent.remove(id);
       }
-      _isLoading = false;
-      notifyListeners();
-    }, onError: (e) {
-      debugPrint('Error listening to Firestore: $e');
-      _isOnline = false;
-      _loadLocal();
-    });
+    }
+
+    for (final id in ids) {
+      if (!_recordSubs.containsKey(id)) {
+        final sub = _recordsRef(id).snapshots().listen(
+          (snap) {
+            _recordsByEvent[id] = snap.docs
+                .map((doc) => AttendanceRecord.fromMap(doc.data()))
+                .toList()
+              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            _applyRecordsToEvents();
+            _cacheLocally();
+          },
+          onError: (e) {
+            debugPrint('Error listening to records for $id: $e');
+          },
+        );
+        _recordSubs[id] = sub;
+      }
+    }
+  }
+
+  void _applyRecordsToEvents() {
+    for (final event in _events) {
+      final recs = _recordsByEvent[event.id];
+      if (recs != null) {
+        event.records = recs;
+      }
+    }
+    notifyListeners();
   }
 
   Future<void> refresh() async {
     try {
-      final snapshot = await _firestore.collection('attendance_events').get();
-      final newEvents = snapshot.docs.map((doc) => AttendanceEvent.fromMap(doc.data())).toList();
+      final snapshot =
+          await _firestore.collection('attendance_events').get();
+      final newEvents =
+          snapshot.docs
+              .map((doc) => AttendanceEvent.fromMap(doc.data()))
+              .toList();
       final seenIds = <String>{};
-      _events = newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
+      _events =
+          newEvents.where((e) => e.id.isNotEmpty && seenIds.add(e.id)).toList();
       _events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      _syncRecordListeners();
+
+      for (final event in _events) {
+        await _fetchRecords(event.id);
+      }
+      _applyRecordsToEvents();
       await _cacheLocally();
       notifyListeners();
     } catch (e) {
       debugPrint('Error refreshing events: $e');
+    }
+  }
+
+  Future<void> _fetchRecords(String eventId) async {
+    try {
+      final snap = await _firestore
+          .collection('attendance_events')
+          .doc(eventId)
+          .collection('records')
+          .get();
+      _recordsByEvent[eventId] = snap.docs
+          .map((doc) => AttendanceRecord.fromMap(doc.data()))
+          .toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    } catch (e) {
+      debugPrint('Error fetching records for $eventId: $e');
     }
   }
 
@@ -232,16 +329,34 @@ class AttendanceEventProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final pendingData = prefs.getString('pending_actions');
 
-      if (pendingData != null && pendingData.isNotEmpty) {
-        final List<dynamic> pending = jsonDecode(pendingData);
-
-        for (final action in pending) {
-          await _executeAction(Map<String, dynamic>.from(action));
-        }
-
-        await prefs.remove('pending_actions');
-        _listenToFirestore();
+      if (pendingData == null || pendingData.isEmpty) {
+        _isOnline = true;
+        notifyListeners();
+        return;
       }
+
+      final List<dynamic> pending = jsonDecode(pendingData);
+      var remaining = List<dynamic>.from(pending);
+
+      for (var i = 0; i < pending.length; i++) {
+        try {
+          await _executeAction(Map<String, dynamic>.from(pending[i]));
+          remaining = List<dynamic>.from(pending.sublist(i + 1));
+        } catch (e) {
+          debugPrint('Action failed, keeping it queued: $e');
+          break;
+        }
+      }
+
+      if (remaining.isEmpty) {
+        await prefs.remove('pending_actions');
+      } else {
+        await prefs.setString('pending_actions', jsonEncode(remaining));
+      }
+
+      _isOnline = true;
+      notifyListeners();
+      await refresh();
     } catch (e) {
       debugPrint('Error syncing pending actions: $e');
     }
@@ -256,10 +371,13 @@ class AttendanceEventProvider extends ChangeNotifier {
         final record = AttendanceRecord.fromMap(
           Map<String, dynamic>.from(action['record']),
         );
-        await _addRecordToFirestore(eventId, record);
+        await _recordsRef(eventId).doc(record.id).set(record.toMap());
+        break;
+      case 'delete_record':
+        await _recordsRef(eventId).doc(action['recordId'] as String).delete();
         break;
       case 'remove_record':
-        await _removeRecordFromFirestore(
+        await _removeRecordsFromFirestore(
           eventId,
           action['studentId'] as String,
           action['attendanceType'] as String,
@@ -267,36 +385,49 @@ class AttendanceEventProvider extends ChangeNotifier {
         break;
       case 'create_event':
         final event = AttendanceEvent.fromJson(Map<String, dynamic>.from(action['event']));
-        await _firestore.collection('attendance_events').doc(event.id).set(event.toMap());
+        await _firestore
+            .collection('attendance_events')
+            .doc(event.id)
+            .set(event.toFirestoreMap());
+        break;
+      case 'rename_event':
+        await _firestore
+            .collection('attendance_events')
+            .doc(eventId)
+            .update({'name': action['name'] as String});
         break;
       case 'delete_event':
-        await _firestore.collection('attendance_events').doc(eventId).delete();
+        await _deleteEventWithRecords(eventId);
         break;
       case 'clear_records':
-        await _firestore.collection('attendance_events').doc(eventId).update({'records': []});
+        await _clearRecordsFromFirestore(eventId);
         break;
     }
   }
 
-  Future<void> _addRecordToFirestore(String eventId, AttendanceRecord record) async {
-    final doc = await _firestore.collection('attendance_events').doc(eventId).get();
-    if (doc.exists) {
-      final event = AttendanceEvent.fromMap(doc.data()!);
-      event.records.insert(0, record);
-      await _firestore.collection('attendance_events').doc(eventId).update({
-        'records': event.records.map((r) => r.toMap()).toList(),
-      });
+  Future<void> _deleteEventWithRecords(String eventId) async {
+    await _clearRecordsFromFirestore(eventId);
+    await _firestore.collection('attendance_events').doc(eventId).delete();
+  }
+
+  Future<void> _removeRecordsFromFirestore(
+    String eventId,
+    String studentId,
+    String type,
+  ) async {
+    final snap = await _recordsRef(eventId)
+        .where('type', isEqualTo: type)
+        .where('student.id', isEqualTo: studentId)
+        .get();
+    for (final doc in snap.docs) {
+      await doc.reference.delete();
     }
   }
 
-  Future<void> _removeRecordFromFirestore(String eventId, String studentId, String type) async {
-    final doc = await _firestore.collection('attendance_events').doc(eventId).get();
-    if (doc.exists) {
-      final event = AttendanceEvent.fromMap(doc.data()!);
-      event.records.removeWhere((r) => r.student.id == studentId && r.type.name == type);
-      await _firestore.collection('attendance_events').doc(eventId).update({
-        'records': event.records.map((r) => r.toMap()).toList(),
-      });
+  Future<void> _clearRecordsFromFirestore(String eventId) async {
+    final snap = await _recordsRef(eventId).get();
+    for (final doc in snap.docs) {
+      await doc.reference.delete();
     }
   }
 
@@ -313,7 +444,10 @@ class AttendanceEventProvider extends ChangeNotifier {
 
     if (_isOnline) {
       try {
-        await _firestore.collection('attendance_events').doc(eventId).set(event.toMap());
+        await _firestore
+            .collection('attendance_events')
+            .doc(eventId)
+            .set(event.toFirestoreMap());
       } catch (e) {
         _addPendingAction({'type': 'create_event', 'event': event.toJson()});
       }
@@ -323,6 +457,7 @@ class AttendanceEventProvider extends ChangeNotifier {
 
     _events.insert(0, event);
     _selectedEventId ??= eventId;
+    _recordsByEvent[eventId] = [];
     await _cacheLocally();
     notifyListeners();
   }
@@ -330,7 +465,7 @@ class AttendanceEventProvider extends ChangeNotifier {
   Future<void> deleteEvent(String id) async {
     if (_isOnline) {
       try {
-        await _firestore.collection('attendance_events').doc(id).delete();
+        await _deleteEventWithRecords(id);
       } catch (e) {
         _addPendingAction({'type': 'delete_event', 'eventId': id});
       }
@@ -338,6 +473,8 @@ class AttendanceEventProvider extends ChangeNotifier {
       _addPendingAction({'type': 'delete_event', 'eventId': id});
     }
 
+    _recordSubs.remove(id)?.cancel();
+    _recordsByEvent.remove(id);
     _events.removeWhere((e) => e.id == id);
     if (_selectedEventId == id) {
       _selectedEventId = _events.isNotEmpty ? _events.first.id : null;
@@ -358,10 +495,19 @@ class AttendanceEventProvider extends ChangeNotifier {
 
       if (_isOnline) {
         try {
-          await _firestore.collection('attendance_events').doc(id).update(updatedEvent.toMap());
+          await _firestore
+              .collection('attendance_events')
+              .doc(id)
+              .update({'name': newName});
         } catch (e) {
-          debugPrint('Error updating event: $e');
+          _addPendingAction({
+            'type': 'rename_event',
+            'eventId': id,
+            'name': newName,
+          });
         }
+      } else {
+        _addPendingAction({'type': 'rename_event', 'eventId': id, 'name': newName});
       }
 
       _events[index] = updatedEvent;
@@ -398,13 +544,15 @@ class AttendanceEventProvider extends ChangeNotifier {
     final index = _events.indexWhere((e) => e.id == eventId);
     if (index != -1) {
       _events[index].records.insert(0, record);
-      notifyListeners();
+      _recordsByEvent[eventId]?.insert(0, record);
+      final recordMap = {
+        ...record.toMap(),
+        'eventId': eventId,
+      };
 
       if (_isOnline) {
         try {
-          await _firestore.collection('attendance_events').doc(eventId).update({
-            'records': _events[index].records.map((r) => r.toMap()).toList(),
-          });
+          await _recordsRef(eventId).doc(record.id).set(recordMap);
         } catch (e) {
           _addPendingAction({
             'type': 'add_record',
@@ -420,21 +568,59 @@ class AttendanceEventProvider extends ChangeNotifier {
         });
       }
 
+      _applyRecordsToEvents();
       await _cacheLocally();
+      notifyListeners();
     }
   }
 
-  Future<void> removeRecord(String eventId, String studentId, AttendanceType type) async {
+  Future<void> deleteRecord(String eventId, String recordId) async {
+    final index = _events.indexWhere((e) => e.id == eventId);
+    if (index == -1) return;
+
+    _events[index].records.removeWhere((r) => r.id == recordId);
+    _recordsByEvent[eventId]?.removeWhere((r) => r.id == recordId);
+
+    if (_isOnline) {
+      try {
+        await _recordsRef(eventId).doc(recordId).delete();
+      } catch (e) {
+        _addPendingAction({
+          'type': 'delete_record',
+          'eventId': eventId,
+          'recordId': recordId,
+        });
+      }
+    } else {
+      _addPendingAction({
+        'type': 'delete_record',
+        'eventId': eventId,
+        'recordId': recordId,
+      });
+    }
+
+    _applyRecordsToEvents();
+    await _cacheLocally();
+    notifyListeners();
+  }
+
+  Future<void> removeRecord(
+    String eventId,
+    String studentId,
+    AttendanceType type,
+  ) async {
     final index = _events.indexWhere((e) => e.id == eventId);
     if (index != -1) {
-      _events[index].records.removeWhere((r) => r.student.id == studentId && r.type == type);
-      notifyListeners();
+      _events[index].records.removeWhere(
+        (r) => r.student.id == studentId && r.type == type,
+      );
+      _recordsByEvent[eventId]?.removeWhere(
+        (r) => r.student.id == studentId && r.type == type,
+      );
 
       if (_isOnline) {
         try {
-          await _firestore.collection('attendance_events').doc(eventId).update({
-            'records': _events[index].records.map((r) => r.toMap()).toList(),
-          });
+          await _removeRecordsFromFirestore(eventId, studentId, type.name);
         } catch (e) {
           _addPendingAction({
             'type': 'remove_record',
@@ -452,15 +638,8 @@ class AttendanceEventProvider extends ChangeNotifier {
         });
       }
 
+      _applyRecordsToEvents();
       await _cacheLocally();
-    }
-  }
-
-  void deleteRecord(String eventId, String recordId) {
-    final index = _events.indexWhere((e) => e.id == eventId);
-    if (index != -1) {
-      _events[index].records.removeWhere((r) => r.id == recordId);
-      _cacheLocally();
       notifyListeners();
     }
   }
@@ -469,10 +648,11 @@ class AttendanceEventProvider extends ChangeNotifier {
     final index = _events.indexWhere((e) => e.id == eventId);
     if (index != -1) {
       _events[index].records.clear();
+      _recordsByEvent[eventId]?.clear();
 
       if (_isOnline) {
         try {
-          await _firestore.collection('attendance_events').doc(eventId).update({'records': []});
+          await _clearRecordsFromFirestore(eventId);
         } catch (e) {
           _addPendingAction({'type': 'clear_records', 'eventId': eventId});
         }
@@ -480,6 +660,7 @@ class AttendanceEventProvider extends ChangeNotifier {
         _addPendingAction({'type': 'clear_records', 'eventId': eventId});
       }
 
+      _applyRecordsToEvents();
       await _cacheLocally();
       notifyListeners();
     }
@@ -609,10 +790,17 @@ class AttendanceEventProvider extends ChangeNotifier {
   }
 
   Future<void> _saveToFirestore(AttendanceEvent event) async {
-    try {
-      await _firestore.collection('attendance_events').doc(event.id).set(event.toMap());
-    } catch (e) {
-      debugPrint('Error saving to Firestore: $e');
+    if (_isOnline) {
+      try {
+        await _firestore
+            .collection('attendance_events')
+            .doc(event.id)
+            .update({
+              'sharedWith': event.sharedWith,
+            });
+      } catch (e) {
+        debugPrint('Error saving to Firestore: $e');
+      }
     }
   }
 }

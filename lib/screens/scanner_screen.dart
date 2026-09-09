@@ -1,7 +1,3 @@
-import 'dart:convert';
-
-import 'package:attendance_checker/services/api_service.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
@@ -10,7 +6,6 @@ import '../models/student.dart';
 import '../models/attendance_record.dart';
 import '../providers/day_provider.dart';
 import '../providers/folder_provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -27,22 +22,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final TextEditingController _manualInputController = TextEditingController();
   bool _showManualInput = false;
   bool _isAmSelected = true;
-  late final ApiService _api;
 
-  bool get _isWeb => kIsWeb;
+  bool get _isWeb => identical(0, 0.0) ? true : false;
 
   @override
   void initState() {
     super.initState();
-    _api = ApiService(baseUrl: 'https://api.sms-gate.app/3rdparty/v1');
-
-    if (!_isWeb) {
-      _controller = MobileScannerController(
-        detectionSpeed: DetectionSpeed.normal,
-        facing: CameraFacing.back,
-        formats: [BarcodeFormat.qrCode],
-      );
-    }
+    _controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      facing: CameraFacing.back,
+      formats: [BarcodeFormat.qrCode],
+    );
   }
 
   @override
@@ -91,50 +81,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
 
     if (foundStudent != null) {
-      var record = _autoRecordAttendance(foundStudent);
-
-      if (record != null && foundStudent.parentNumber.isNotEmpty) {
-        var name = foundStudent.fullName;
-        var type = record.type;
-        var time =
-            '${record.timestamp.hour}:${record.timestamp.minute}:${record.timestamp.second} ${_isAmSelected ? 'AM' : 'PM'}';
-        var date =
-            '${record.timestamp.year}/${record.timestamp.month}/${record.timestamp.day}';
-
-        try {
-          var username = dotenv.get('SMS_GATEWAY_USERNAME');
-          var password = dotenv.get('SMS_GATEWAY_PASSWORD');
-
-          var credentials = "$username:$password";
-
-          var normalizedNumbers = [];
-          if (foundStudent.parentNumber.startsWith('09')) {
-            var num = '+63${foundStudent.parentNumber.replaceFirst('09', '9')}';
-            normalizedNumbers.add(num);
-          } else if (foundStudent.parentNumber.startsWith('+63')) {
-            normalizedNumbers.add(foundStudent.parentNumber);
-          } else {
-            debugPrint("Number format isn't accepted.");
-          }
-
-          await _api.postJson(
-            '/messages',
-            headers: {
-              'Authorization':
-                  'Basic ${base64Encode(utf8.encode(credentials))}',
-            },
-            body: {
-              'textMessage': {
-                'text':
-                    'Notice Your Son/Daughter, $name has $type at Saint Joseph\'s College of Baggao at $time on $date',
-              },
-              'phoneNumbers': [normalizedNumbers],
-            },
-          );
-        } catch (e) {
-          debugPrint("Env's are not loaded: $e");
-        }
-      }
+      _autoRecordAttendance(foundStudent);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -156,12 +103,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
-  AttendanceRecord? _autoRecordAttendance(Student student) {
+  void _autoRecordAttendance(Student student) {
     final eventProvider = context.read<AttendanceEventProvider>();
 
     if (eventProvider.selectedEventId == null) {
       _showErrorSnackBar('Please select an Event first');
-      return null;
+      return;
     }
 
     final AttendanceType type;
@@ -183,7 +130,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       _showWarningSnackBar(
         '${student.fullName} already timed in for ${_isAmSelected ? "AM" : "PM"}',
       );
-      return null;
+      return;
     }
 
     if (type == AttendanceType.timeOut &&
@@ -195,7 +142,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       _showWarningSnackBar(
         '${student.fullName} already timed out for ${_isAmSelected ? "AM" : "PM"}',
       );
-      return null;
+      return;
     }
 
     final now = DateTime.now();
@@ -257,8 +204,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
 
     _resetScanner();
-
-    return record;
   }
 
   void _showErrorSnackBar(String message) {
@@ -320,16 +265,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (_isWeb)
-            IconButton(
-              icon: Icon(_showManualInput ? Icons.qr_code : Icons.keyboard),
-              onPressed: () {
-                setState(() {
-                  _showManualInput = !_showManualInput;
-                });
-              },
-              tooltip: _showManualInput ? 'Use Scanner' : 'Manual Input',
-            ),
+          IconButton(
+            icon: Icon(_showManualInput ? Icons.qr_code : Icons.keyboard),
+            onPressed: () {
+              setState(() {
+                _showManualInput = !_showManualInput;
+              });
+            },
+            tooltip: _showManualInput ? 'Use Scanner' : 'Manual Input',
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -338,17 +282,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
           children: [
             _buildDaySelector(),
             _buildAmPmSelector(),
-            Container(
-              margin: const EdgeInsets.all(16),
-              height: _isWeb ? 0 : MediaQuery.of(context).size.height * 0.25,
-              child: _isWeb
-                  ? (_showManualInput
-                        ? _buildManualInput()
-                        : _buildWebPlaceholder())
-                  : _buildScanner(),
-            ),
+            _buildScannerArea(),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -366,32 +302,52 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
+  Widget _buildScannerArea() {
+    if (_showManualInput) {
+      return _buildManualInput();
+    }
+
+    if (_isWeb) {
+      return _buildWebPlaceholder();
+    }
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      height: 250,
+      child: _buildScanner(),
+    );
+  }
+
   Widget _buildDaySelector() {
     return Container(
       padding: const EdgeInsets.all(16),
       color: Colors.white,
       child: Consumer<AttendanceEventProvider>(
         builder: (context, eventProvider, child) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F7FA),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: eventProvider.selectedEventId,
-                isExpanded: true,
-                hint: const Text('Select Event'),
-                icon: const Icon(Icons.calendar_today, size: 18),
-                items: eventProvider.events.map((day) {
-                  return DropdownMenuItem(value: day.id, child: Text(day.name));
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    eventProvider.selectEvent(value);
-                  }
-                },
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 60),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7FA),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: eventProvider.selectedEventId,
+                  isExpanded: true,
+                  isDense: true,
+                  hint: const Text('Select Event'),
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  items: eventProvider.events.map((day) {
+                    return DropdownMenuItem(value: day.id, child: Text(day.name));
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      eventProvider.selectEvent(value);
+                    }
+                  },
+                ),
               ),
             ),
           );
@@ -541,7 +497,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Widget _buildWebPlaceholder() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -577,7 +533,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Widget _buildManualInput() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -664,18 +620,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         if (filteredRecords.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.inbox, size: 48, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                Text(
-                  _selectedFilter == 0
-                      ? 'No ${_isAmSelected ? "AM" : "PM"} records yet'
-                      : 'No ${_isAmSelected ? "AM" : "PM"} ${_selectedFilter == 1 ? "Time In" : "Time Out"} records',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 16),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  Icon(Icons.inbox, size: 48, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    _selectedFilter == 0
+                        ? 'No ${_isAmSelected ? "AM" : "PM"} records yet'
+                        : 'No ${_isAmSelected ? "AM" : "PM"} ${_selectedFilter == 1 ? "Time In" : "Time Out"} records',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -683,6 +642,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: filteredRecords.length,
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
           itemBuilder: (context, index) {
             final record = filteredRecords[index];
             final isTimeIn = record.type == AttendanceType.timeIn;

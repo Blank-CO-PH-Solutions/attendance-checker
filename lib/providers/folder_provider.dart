@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/student.dart';
@@ -140,9 +141,11 @@ class FolderProvider extends ChangeNotifier {
   String? _currentUserId;
   String? _selectedId;
   bool _firestoreInitialized = false;
+  bool _isOnline = true;
 
   List<Folder> get folders => _folders;
   String? get selectedId => _selectedId;
+  bool get isOnline => _isOnline;
   Folder? get selectedFolder {
     if (_selectedId == null || _folders.isEmpty) return null;
     try {
@@ -153,12 +156,25 @@ class FolderProvider extends ChangeNotifier {
   }
 
   FolderProvider() {
+    _initConnectivity();
     _loadLocal();
   }
 
   void setUserId(String userId) {
     _currentUserId = userId;
     _listenToFirestore();
+  }
+
+  void _initConnectivity() {
+    Connectivity().onConnectivityChanged.listen((result) {
+      final wasOffline = !_isOnline;
+      _isOnline = result.isNotEmpty && !result.contains(ConnectivityResult.none);
+
+      if (wasOffline && _isOnline) {
+        _syncPendingFolderActions();
+      }
+      notifyListeners();
+    });
   }
 
   Future<void> _loadLocal() async {
@@ -195,6 +211,8 @@ class FolderProvider extends ChangeNotifier {
           },
           onError: (e) {
             debugPrint('Error listening to folders: $e');
+            _isOnline = false;
+            notifyListeners();
             _loadLocal();
           },
         );
@@ -218,6 +236,8 @@ class FolderProvider extends ChangeNotifier {
           },
           onError: (e) {
             debugPrint('Error listening to students: $e');
+            _isOnline = false;
+            notifyListeners();
           },
         );
   }
@@ -284,6 +304,7 @@ class FolderProvider extends ChangeNotifier {
   }
 
   Future<void> _saveToFirestore(Folder folder) async {
+    if (!_isOnline) return;
     try {
       await FirebaseFirestore.instance
           .collection('folders')
@@ -295,6 +316,7 @@ class FolderProvider extends ChangeNotifier {
   }
 
   Future<void> _deleteFromFirestore(String folderId) async {
+    if (!_isOnline) return;
     try {
       await FirebaseFirestore.instance
           .collection('folders')
@@ -302,6 +324,98 @@ class FolderProvider extends ChangeNotifier {
           .delete();
     } catch (e) {
       debugPrint('Error deleting from Firestore: $e');
+    }
+  }
+
+  Future<void> _syncPendingFolderActions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingData = prefs.getString('pending_folder_actions');
+
+      if (pendingData == null || pendingData.isEmpty) {
+        _isOnline = true;
+        notifyListeners();
+        await refresh();
+        return;
+      }
+
+      final List<dynamic> pending = jsonDecode(pendingData);
+      var remaining = List<dynamic>.from(pending);
+
+      for (var i = 0; i < pending.length; i++) {
+        try {
+          await _executeFolderAction(Map<String, dynamic>.from(pending[i]));
+          remaining = List<dynamic>.from(pending.sublist(i + 1));
+        } catch (e) {
+          debugPrint('Folder action failed, keeping queued: $e');
+          break;
+        }
+      }
+
+      if (remaining.isEmpty) {
+        await prefs.remove('pending_folder_actions');
+      } else {
+        await prefs.setString('pending_folder_actions', jsonEncode(remaining));
+      }
+
+      _isOnline = true;
+      notifyListeners();
+      await refresh();
+    } catch (e) {
+      debugPrint('Error syncing pending folder actions: $e');
+    }
+  }
+
+  Future<void> _executeFolderAction(Map<String, dynamic> action) async {
+    final type = action['type'] as String;
+    final firestore = FirebaseFirestore.instance;
+
+    switch (type) {
+      case 'create_folder':
+      case 'rename_folder':
+      case 'add_file':
+      case 'remove_file':
+      case 'share_folder':
+      case 'unshare_folder':
+        final folder = Folder.fromJson(Map<String, dynamic>.from(action['folder']));
+        await firestore.collection('folders').doc(folder.id).set(folder.toFirestoreJson());
+        break;
+      case 'delete_folder':
+        await firestore.collection('folders').doc(action['folderId'] as String).delete();
+        break;
+      case 'add_student':
+        final student = Student.fromMap(Map<String, dynamic>.from(action['student']));
+        await firestore.collection('students').doc(student.id).set({
+          ...student.toMap(),
+          'folderId': action['folderId'],
+          'ownerId': action['ownerId'] ?? _currentUserId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        break;
+      case 'update_student':
+        final s = Student.fromMap(Map<String, dynamic>.from(action['student']));
+        await firestore.collection('students').doc(s.id).update(s.toMap());
+        break;
+      case 'remove_student':
+        await firestore.collection('students').doc(action['studentId'] as String).delete();
+        break;
+    }
+  }
+
+  Future<void> _addPendingFolderAction(Map<String, dynamic> action) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingData = prefs.getString('pending_folder_actions');
+      List<dynamic> pending = [];
+
+      if (pendingData != null && pendingData.isNotEmpty) {
+        pending = jsonDecode(pendingData);
+      }
+
+      pending.add({...action, 'timestamp': DateTime.now().toIso8601String()});
+      await prefs.setString('pending_folder_actions', jsonEncode(pending));
+    } catch (e) {
+      debugPrint('Error adding pending folder action: $e');
     }
   }
 
@@ -316,8 +430,13 @@ class FolderProvider extends ChangeNotifier {
     );
     _folders.add(folder);
     _selectedId ??= folder.id;
+
+    if (_isOnline) {
+      _saveToFirestore(folder);
+    } else {
+      _addPendingFolderAction({'type': 'create_folder', 'folder': folder.toJson()});
+    }
     _saveLocal();
-    _saveToFirestore(folder);
     notifyListeners();
   }
 
@@ -325,8 +444,12 @@ class FolderProvider extends ChangeNotifier {
     final i = _folders.indexWhere((f) => f.id == id);
     if (i != -1) {
       _folders[i] = _folders[i].copyWith(name: newName);
+      if (_isOnline) {
+        _saveToFirestore(_folders[i]);
+      } else {
+        _addPendingFolderAction({'type': 'rename_folder', 'folder': _folders[i].toJson()});
+      }
       _saveLocal();
-      _saveToFirestore(_folders[i]);
       notifyListeners();
     }
   }
@@ -337,14 +460,23 @@ class FolderProvider extends ChangeNotifier {
       orElse: () =>
           Folder(id: '', name: '', ownerId: '', createdAt: DateTime.now()),
     );
-    if (folder.ownerId != _currentUserId) return;
+    if (folder.id.isEmpty) return;
+    if (folder.ownerId != _currentUserId &&
+        !folder.sharedWith.contains(_currentUserId)) {
+      return;
+    }
 
     _folders.removeWhere((f) => f.id == id);
     if (_selectedId == id) {
       _selectedId = _folders.isNotEmpty ? _folders.first.id : null;
     }
+
+    if (_isOnline) {
+      _deleteFromFirestore(id);
+    } else {
+      _addPendingFolderAction({'type': 'delete_folder', 'folderId': id});
+    }
     _saveLocal();
-    _deleteFromFirestore(id);
     notifyListeners();
   }
 
@@ -355,28 +487,43 @@ class FolderProvider extends ChangeNotifier {
 
   Future<void> addStudent(String folderId, Student student) async {
     final i = _folders.indexWhere((f) => f.id == folderId);
-    if (i != -1) {
-      _folders[i] = _folders[i].copyWith(
-        students: [..._folders[i].students, student],
-      );
-      _saveLocal();
-      _saveToFirestore(_folders[i]);
-      notifyListeners();
+    if (i == -1) return;
+
+    _folders[i] = _folders[i].copyWith(
+      students: [..._folders[i].students, student],
+    );
+
+    if (_isOnline) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('students')
+            .doc(student.id)
+            .set({
+              ...student.toMap(),
+              'folderId': folderId,
+              'ownerId': _currentUserId,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+      } catch (e) {
+        debugPrint('Error saving student: $e');
+        _addPendingFolderAction({
+          'type': 'add_student',
+          'folderId': folderId,
+          'student': student.toMap(),
+          'ownerId': _currentUserId,
+        });
+      }
+    } else {
+      _addPendingFolderAction({
+        'type': 'add_student',
+        'folderId': folderId,
+        'student': student.toMap(),
+        'ownerId': _currentUserId,
+      });
     }
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('students')
-          .doc(student.id)
-          .set({
-            ...student.toMap(),
-            'folderId': folderId,
-            'ownerId': _currentUserId,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-    } catch (e) {
-      debugPrint('Error saving student: $e');
-    }
+    _saveLocal();
+    notifyListeners();
   }
 
   void addFile(String folderId, UploadedFile file) {
@@ -385,29 +532,44 @@ class FolderProvider extends ChangeNotifier {
       final updatedFiles = List<UploadedFile>.from(_folders[i].files)
         ..add(file);
       _folders[i] = _folders[i].copyWith(files: updatedFiles);
+      if (_isOnline) {
+        _saveToFirestore(_folders[i]);
+      } else {
+        _addPendingFolderAction({'type': 'add_file', 'folder': _folders[i].toJson()});
+      }
       _saveLocal();
-      _saveToFirestore(_folders[i]);
       notifyListeners();
     }
   }
 
   Future<void> removeStudent(String folderId, String studentId) async {
     final i = _folders.indexWhere((f) => f.id == folderId);
-    if (i != -1) {
-      final updatedStudents = _folders[i].students
-          .where((s) => s.id != studentId)
-          .toList();
-      _folders[i] = _folders[i].copyWith(students: updatedStudents);
-      _saveLocal();
-      _saveToFirestore(_folders[i]);
+    if (i == -1) return;
 
-      await FirebaseFirestore.instance
-          .collection('students')
-          .doc(studentId)
-          .delete();
+    final updatedStudents = _folders[i].students
+        .where((s) => s.id != studentId)
+        .toList();
+    _folders[i] = _folders[i].copyWith(students: updatedStudents);
 
-      notifyListeners();
+    if (_isOnline) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('students')
+            .doc(studentId)
+            .delete();
+      } catch (e) {
+        debugPrint('Error removing student: $e');
+        _addPendingFolderAction({
+          'type': 'remove_student',
+          'studentId': studentId,
+        });
+      }
+    } else {
+      _addPendingFolderAction({'type': 'remove_student', 'studentId': studentId});
     }
+
+    _saveLocal();
+    notifyListeners();
   }
 
   Future<void> updateStudent(String folderId, Student updatedStudent) async {
@@ -420,14 +582,28 @@ class FolderProvider extends ChangeNotifier {
         final updatedStudents = List<Student>.from(_folders[i].students);
         updatedStudents[studentIndex] = updatedStudent;
         _folders[i] = _folders[i].copyWith(students: updatedStudents);
+
+        if (_isOnline) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('students')
+                .doc(updatedStudent.id)
+                .update(updatedStudent.toMap());
+          } catch (e) {
+            debugPrint('Error updating student: $e');
+            _addPendingFolderAction({
+              'type': 'update_student',
+              'student': updatedStudent.toMap(),
+            });
+          }
+        } else {
+          _addPendingFolderAction({
+            'type': 'update_student',
+            'student': updatedStudent.toMap(),
+          });
+        }
+
         _saveLocal();
-        _saveToFirestore(_folders[i]);
-
-        await FirebaseFirestore.instance
-            .collection('students')
-            .doc(updatedStudent.id)
-            .update(updatedStudent.toMap());
-
         notifyListeners();
       }
     }
@@ -456,8 +632,12 @@ class FolderProvider extends ChangeNotifier {
           .where((f) => f.id != fileId)
           .toList();
       _folders[i] = _folders[i].copyWith(files: updatedFiles);
+      if (_isOnline) {
+        _saveToFirestore(_folders[i]);
+      } else {
+        _addPendingFolderAction({'type': 'remove_file', 'folder': _folders[i].toJson()});
+      }
       _saveLocal();
-      _saveToFirestore(_folders[i]);
       notifyListeners();
     }
   }
@@ -470,8 +650,12 @@ class FolderProvider extends ChangeNotifier {
         final updatedSharedWith = List<String>.from(folder.sharedWith)
           ..add(userId);
         _folders[i] = folder.copyWith(sharedWith: updatedSharedWith);
+        if (_isOnline) {
+          _saveToFirestore(_folders[i]);
+        } else {
+          _addPendingFolderAction({'type': 'share_folder', 'folder': _folders[i].toJson()});
+        }
         _saveLocal();
-        _saveToFirestore(_folders[i]);
         notifyListeners();
       }
     }
@@ -485,8 +669,12 @@ class FolderProvider extends ChangeNotifier {
           .where((id) => id != userId)
           .toList();
       _folders[i] = folder.copyWith(sharedWith: updatedSharedWith);
+      if (_isOnline) {
+        _saveToFirestore(_folders[i]);
+      } else {
+        _addPendingFolderAction({'type': 'unshare_folder', 'folder': _folders[i].toJson()});
+      }
       _saveLocal();
-      _saveToFirestore(_folders[i]);
       notifyListeners();
     }
   }
@@ -512,6 +700,7 @@ class FolderProvider extends ChangeNotifier {
       await folderDir.create();
 
       for (final student in folder.students) {
+        if (!context.mounted) return;
         final bytes = await _captureStudentCard(context, student);
         await File(
           '${folderDir.path}/${student.fileName}.png',

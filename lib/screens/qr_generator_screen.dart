@@ -22,7 +22,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
   final _lastNameController = TextEditingController();
   final _studentNumberController = TextEditingController();
   final _programYearController = TextEditingController();
-  final _parentNumberController = TextEditingController();
   final Uuid _uuid = const Uuid();
 
   @override
@@ -31,7 +30,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
     _lastNameController.dispose();
     _studentNumberController.dispose();
     _programYearController.dispose();
-    _parentNumberController.dispose();
     super.dispose();
   }
 
@@ -225,14 +223,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                               },
                             ),
                             const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _parentNumberController,
-                              decoration: _inputDecoration(
-                                "Parent's Number",
-                                Icons.phone,
-                              ),
-                              keyboardType: TextInputType.phone,
-                            ),
                           ],
                         ),
                       ),
@@ -319,7 +309,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
         studentNumber: _studentNumberController.text.trim(),
         year: '',
         program: _programYearController.text.trim(),
-        parentNumber: _parentNumberController.text.trim(),
       );
 
       fp.addStudent(fp.selectedId!, student);
@@ -328,7 +317,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
       _lastNameController.clear();
       _studentNumberController.clear();
       _programYearController.clear();
-      _parentNumberController.clear();
       Navigator.pop(context);
 
       Navigator.push(
@@ -390,14 +378,13 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
       final headerRow = sheet.rows.first;
       final headers = headerRow.map((cell) => cell?.value?.toString().toLowerCase().trim() ?? '').toList();
 
-      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1, parentNumberIdx = -1;
+      int firstNameIdx = -1, lastNameIdx = -1, studentNumberIdx = -1, programYearIdx = -1;
       for (int i = 0; i < headers.length; i++) {
         final h = headers[i];
         if (h.contains('first') && h.contains('name')) firstNameIdx = i;
         else if (h.contains('last') && h.contains('name')) lastNameIdx = i;
         else if (h.contains('student') && h.contains('number')) studentNumberIdx = i;
         else if (h.contains('program')) programYearIdx = i;
-        else if (h.contains('parent')) parentNumberIdx = i;
       }
 
       if (firstNameIdx == -1 || lastNameIdx == -1 || studentNumberIdx == -1 || programYearIdx == -1) {
@@ -419,9 +406,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
         final lastName = row[lastNameIdx]?.value?.toString().trim() ?? '';
         final studentNumber = row[studentNumberIdx]?.value?.toString().trim() ?? '';
         final programYear = row[programYearIdx]?.value?.toString().trim() ?? '';
-        final parentNumber = parentNumberIdx == -1
-            ? ''
-            : (row[parentNumberIdx]?.value?.toString().trim() ?? '');
 
         if (firstName.isEmpty || lastName.isEmpty || studentNumber.isEmpty || programYear.isEmpty) continue;
 
@@ -433,7 +417,6 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
           studentNumber: studentNumber,
           year: '',
           program: programYear,
-          parentNumber: parentNumber,
         ));
       }
 

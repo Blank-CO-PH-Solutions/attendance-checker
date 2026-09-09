@@ -324,30 +324,33 @@ class _ScannerScreenState extends State<ScannerScreen> {
       color: Colors.white,
       child: Consumer<AttendanceEventProvider>(
         builder: (context, eventProvider, child) {
-          return ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 60),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F7FA),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: eventProvider.selectedEventId,
-                  isExpanded: true,
-                  isDense: true,
-                  hint: const Text('Select Event'),
-                  icon: const Icon(Icons.calendar_today, size: 18),
-                  items: eventProvider.events.map((day) {
-                    return DropdownMenuItem(value: day.id, child: Text(day.name));
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      eventProvider.selectEvent(value);
-                    }
-                  },
-                ),
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F7FA),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: eventProvider.selectedEventId,
+                isExpanded: true,
+                isDense: true,
+                hint: const Text('Select Event'),
+                icon: const Icon(Icons.calendar_today, size: 18),
+                items: eventProvider.events.map((day) {
+                  return DropdownMenuItem(
+                    value: day.id,
+                    child: Text(
+                      day.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    eventProvider.selectEvent(value);
+                  }
+                },
               ),
             ),
           );

@@ -225,6 +225,8 @@ class AttendanceEventProvider extends ChangeNotifier {
       onError: (e) {
         debugPrint('Error listening to Firestore: $e');
         _isOnline = false;
+        _isLoading = false;
+        notifyListeners();
         _loadLocal();
       },
     );
@@ -337,14 +339,14 @@ class AttendanceEventProvider extends ChangeNotifier {
       }
 
       final List<dynamic> pending = jsonDecode(pendingData);
-      var remaining = List<dynamic>.from(pending);
+      final List<dynamic> remaining = [];
 
       for (var i = 0; i < pending.length; i++) {
         try {
           await _executeAction(Map<String, dynamic>.from(pending[i]));
-          remaining = List<dynamic>.from(pending.sublist(i + 1));
         } catch (e) {
           debugPrint('Action failed, keeping it queued: $e');
+          remaining.addAll(pending.sublist(i));
           break;
         }
       }
@@ -357,7 +359,14 @@ class AttendanceEventProvider extends ChangeNotifier {
 
       _isOnline = true;
       notifyListeners();
-      await refresh();
+
+      try {
+        await refresh();
+      } catch (e) {
+        debugPrint('Refresh after sync failed: $e');
+        _isOnline = false;
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error syncing pending actions: $e');
     }
@@ -372,7 +381,10 @@ class AttendanceEventProvider extends ChangeNotifier {
         final record = AttendanceRecord.fromMap(
           Map<String, dynamic>.from(action['record']),
         );
-        await _recordsRef(eventId).doc(record.id).set(record.toMap());
+        await _recordsRef(eventId).doc(record.id).set({
+          ...record.toMap(),
+          'eventId': eventId,
+        });
         break;
       case 'delete_record':
         await _recordsRef(eventId).doc(action['recordId'] as String).delete();

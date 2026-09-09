@@ -318,7 +318,7 @@ class _StudentLogScreenState extends State<StudentLogScreen> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            initialValue: _selectedEventId,
+            value: _selectedEventId,
             decoration: InputDecoration(
               labelText: 'Event',
               prefixIcon: const Icon(Icons.event, size: 20),

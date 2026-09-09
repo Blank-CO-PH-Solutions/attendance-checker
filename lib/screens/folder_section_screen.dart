@@ -10,8 +10,9 @@ import 'qr_display_screen.dart';
 
 class FolderSectionScreen extends StatefulWidget {
   final String folderId;
+  final String role;
 
-  const FolderSectionScreen({super.key, required this.folderId});
+  const FolderSectionScreen({super.key, required this.folderId, required this.role});
 
   @override
   State<FolderSectionScreen> createState() => _FolderSectionScreenState();
@@ -269,12 +270,14 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
         MaterialPageRoute(
           builder: (context) => QrDisplayScreen(
             student: student,
-            onDelete: () {
-              context.read<FolderProvider>().removeStudent(
-                widget.folderId,
-                student.id,
-              );
-            },
+            onDelete: widget.role == 'admin'
+                ? () {
+                    context.read<FolderProvider>().removeStudent(
+                      widget.folderId,
+                      student.id,
+                    );
+                  }
+                : null,
           ),
         ),
       );
@@ -598,10 +601,12 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                 'Delete Section',
                 style: TextStyle(color: Colors.red),
               ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _confirmDeleteFolder(folder.name);
-              },
+              onTap: widget.role == 'admin'
+                  ? () {
+                      Navigator.pop(ctx);
+                      _confirmDeleteFolder(folder.name);
+                    }
+                  : null,
             ),
           ],
         ),
@@ -785,12 +790,14 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                             MaterialPageRoute(
                               builder: (context) => QrDisplayScreen(
                                 student: student,
-                                onDelete: () {
-                                  context.read<FolderProvider>().removeStudent(
-                                    widget.folderId,
-                                    student.id,
-                                  );
-                                },
+                                onDelete: widget.role == 'admin'
+                                    ? () {
+                                        context.read<FolderProvider>().removeStudent(
+                                          widget.folderId,
+                                          student.id,
+                                        );
+                                      }
+                                    : null,
                               ),
                             ),
                           );
@@ -799,12 +806,14 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          folderProvider.removeStudent(
-                            widget.folderId,
-                            student.id,
-                          );
-                        },
+                        onPressed: widget.role == 'admin'
+                            ? () {
+                                folderProvider.removeStudent(
+                                  widget.folderId,
+                                  student.id,
+                                );
+                              }
+                            : null,
                       ),
                     ],
                   ),

@@ -178,8 +178,6 @@ class FolderProvider extends ChangeNotifier {
   }
 
   Future<void> _loadLocal() async {
-    if (_firestoreInitialized) return;
-
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('folders');
     if (data != null && data.isNotEmpty) {
@@ -238,6 +236,7 @@ class FolderProvider extends ChangeNotifier {
             debugPrint('Error listening to students: $e');
             _isOnline = false;
             notifyListeners();
+            _loadLocal();
           },
         );
   }
@@ -335,19 +334,25 @@ class FolderProvider extends ChangeNotifier {
       if (pendingData == null || pendingData.isEmpty) {
         _isOnline = true;
         notifyListeners();
-        await refresh();
+        try {
+          await refresh();
+        } catch (e) {
+          debugPrint('Refresh after folder sync failed: $e');
+          _isOnline = false;
+          notifyListeners();
+        }
         return;
       }
 
       final List<dynamic> pending = jsonDecode(pendingData);
-      var remaining = List<dynamic>.from(pending);
+      final List<dynamic> remaining = [];
 
       for (var i = 0; i < pending.length; i++) {
         try {
           await _executeFolderAction(Map<String, dynamic>.from(pending[i]));
-          remaining = List<dynamic>.from(pending.sublist(i + 1));
         } catch (e) {
           debugPrint('Folder action failed, keeping queued: $e');
+          remaining.addAll(pending.sublist(i));
           break;
         }
       }
@@ -360,7 +365,13 @@ class FolderProvider extends ChangeNotifier {
 
       _isOnline = true;
       notifyListeners();
-      await refresh();
+      try {
+        await refresh();
+      } catch (e) {
+        debugPrint('Refresh after folder sync failed: $e');
+        _isOnline = false;
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error syncing pending folder actions: $e');
     }

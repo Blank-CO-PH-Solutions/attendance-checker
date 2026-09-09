@@ -9,8 +9,9 @@ import '../providers/day_provider.dart';
 
 class AttendanceDayScreen extends StatefulWidget {
   final String eventId;
+  final String role;
 
-  const AttendanceDayScreen({super.key, required this.eventId});
+  const AttendanceDayScreen({super.key, required this.eventId, required this.role});
 
   @override
   State<AttendanceDayScreen> createState() => _AttendanceDayScreenState();
@@ -105,10 +106,12 @@ class _AttendanceDayScreenState extends State<AttendanceDayScreen> {
                     ListTile(
                       leading: const Icon(Icons.clear_all, color: Colors.orange),
                       title: const Text('Clear All Records'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _confirmClearRecords();
-                      },
+                      onTap: widget.role == 'admin'
+                          ? () {
+                              Navigator.pop(ctx);
+                              _confirmClearRecords();
+                            }
+                          : null,
                     ),
                     ListTile(
                       leading: const Icon(Icons.delete, color: Colors.red),
@@ -116,10 +119,12 @@ class _AttendanceDayScreenState extends State<AttendanceDayScreen> {
                         'Delete Event',
                         style: TextStyle(color: Colors.red),
                       ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _confirmDeleteEvent(event.name);
-                      },
+                      onTap: widget.role == 'admin'
+                          ? () {
+                              Navigator.pop(ctx);
+                              _confirmDeleteEvent(event.name);
+                            }
+                          : null,
                     ),
                   ],
                 ),
@@ -577,28 +582,30 @@ class _AttendanceDayScreenState extends State<AttendanceDayScreen> {
                                               ),
                                               const SizedBox(height: 4),
                                               GestureDetector(
-                                                onTap: () {
-                                                  showDialog(
-                                                    context: context,
-                                                    builder: (ctx) => AlertDialog(
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                                      title: const Text('Delete Record?'),
-                                                      content: Text('Are you sure you want to delete ${record.student.fullName}\'s attendance record?'),
-                                                      actions: [
-                                                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                                                        ElevatedButton(
-                                                          onPressed: () {
-                                                            context.read<AttendanceEventProvider>().deleteRecord(widget.eventId, record.id);
-                                                            Navigator.pop(ctx);
-                                                          },
-                                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                                          child: const Text('Delete'),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                                child: Icon(Icons.delete_outline, size: 20, color: Colors.grey[400]),
+                                                onTap: widget.role == 'admin'
+                                                    ? () {
+                                                        showDialog(
+                                                          context: context,
+                                                          builder: (ctx) => AlertDialog(
+                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                                            title: const Text('Delete Record?'),
+                                                            content: Text('Are you sure you want to delete ${record.student.fullName}\'s attendance record?'),
+                                                            actions: [
+                                                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                                                              ElevatedButton(
+                                                                onPressed: () {
+                                                                  context.read<AttendanceEventProvider>().deleteRecord(widget.eventId, record.id);
+                                                                  Navigator.pop(ctx);
+                                                                },
+                                                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                                                child: const Text('Delete'),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      }
+                                                    : null,
+                                                child: Icon(Icons.delete_outline, size: 20, color: widget.role == 'admin' ? Colors.grey[400] : Colors.grey[200]),
                                               ),
                                             ],
                                           ),

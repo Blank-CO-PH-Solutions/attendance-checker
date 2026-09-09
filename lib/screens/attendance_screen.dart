@@ -5,7 +5,8 @@ import '../providers/folder_provider.dart';
 import 'attendance_day_screen.dart';
 
 class AttendanceScreen extends StatefulWidget {
-  const AttendanceScreen({super.key});
+  final String role;
+  const AttendanceScreen({super.key, required this.role});
 
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
@@ -224,7 +225,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (context) =>
-                                AttendanceDayScreen(eventId: event.id),
+                                AttendanceDayScreen(eventId: event.id, role: widget.role),
                           ),
                         );
                       },

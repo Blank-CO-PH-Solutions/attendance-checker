@@ -10,7 +10,8 @@ import 'qr_display_screen.dart';
 import 'folder_section_screen.dart';
 
 class QrGeneratorScreen extends StatefulWidget {
-  const QrGeneratorScreen({super.key});
+  final String role;
+  const QrGeneratorScreen({super.key, required this.role});
 
   @override
   State<QrGeneratorScreen> createState() => _QrGeneratorScreenState();
@@ -524,59 +525,69 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
   }
 
   Widget _buildEmptyState(FolderProvider folderProvider) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No Sections Yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Create a section folder to start\ngenerating QR codes',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _showCreateFolderDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Create Section'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'No Sections Yet',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Create a section folder to start\ngenerating QR codes',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _showCreateFolderDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create Section'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -615,7 +626,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
-                            FolderSectionScreen(folderId: folder.id),
+                            FolderSectionScreen(folderId: folder.id, role: widget.role),
                       ),
                     );
                   },
@@ -767,10 +778,12 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                 'Delete Section',
                 style: TextStyle(color: Colors.red),
               ),
-              onTap: () {
-                Navigator.pop(context);
-                _confirmDeleteFolder(folderId, folderName);
-              },
+              onTap: widget.role == 'admin'
+                  ? () {
+                      Navigator.pop(context);
+                      _confirmDeleteFolder(folderId, folderName);
+                    }
+                  : null,
             ),
           ],
         ),

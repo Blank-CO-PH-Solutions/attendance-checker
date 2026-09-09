@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../providers/folder_provider.dart';
 import '../providers/day_provider.dart';
+import '../services/update_service.dart';
 import 'qr_generator_screen.dart';
 import 'scanner_screen.dart';
 import 'attendance_screen.dart';
@@ -17,7 +18,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateService.checkForUpdate(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Sync pending actions when app returns to foreground
+      context.read<FolderProvider>().refresh();
+      context.read<AttendanceEventProvider>().refresh();
+    }
+  }
+
   Future<void> _onRefresh() async {
     await Future.wait([
       context.read<FolderProvider>().refresh(),
@@ -278,24 +303,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              if (isAdmin) ...[
-                _buildMenuCard(
-                  context,
-                  icon: Icons.qr_code_2,
-                  title: 'QR Code Generator',
-                  subtitle: 'Generate student QR codes',
-                  color: const Color(0xFF457507),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const QrGeneratorScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-              ],
+              _buildMenuCard(
+                context,
+                icon: Icons.qr_code_2,
+                title: 'QR Code Generator',
+                subtitle: isAdmin ? 'Generate student QR codes' : 'Create and manage student QR codes',
+                color: const Color(0xFF457507),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => QrGeneratorScreen(role: role),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
               _buildMenuCard(
                 context,
                 icon: Icons.document_scanner,
@@ -322,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const AttendanceScreen(),
+                        builder: (context) => AttendanceScreen(role: role),
                     ),
                   );
                 },

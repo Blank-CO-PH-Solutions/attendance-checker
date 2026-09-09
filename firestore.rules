@@ -57,5 +57,10 @@ service cloud.firestore {
       allow update, delete: if request.auth != null &&
         (resource.data.ownerId == request.auth.uid || isFolderMember(resource.data.folderId));
     }
+
+    match /app_config/{configId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }

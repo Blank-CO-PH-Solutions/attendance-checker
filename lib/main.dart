@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'providers/attendance_provider.dart';
 import 'providers/folder_provider.dart';
 import 'providers/day_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/role_selection_screen.dart';
+import 'services/update_service.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -31,7 +31,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => AttendanceProvider()),
         ChangeNotifierProvider(create: (context) => FolderProvider()),
         ChangeNotifierProvider(create: (context) => AttendanceEventProvider()),
       ],
@@ -173,7 +172,6 @@ class _AuthGateState extends State<AuthGate> {
               }
 
               final userId = snapshot.data!.uid;
-              context.read<AttendanceProvider>().setUserId(userId);
               context.read<FolderProvider>().setUserId(userId);
               context.read<AttendanceEventProvider>().setUserId(userId);
 

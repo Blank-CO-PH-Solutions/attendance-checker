@@ -145,14 +145,14 @@ class AttendanceProvider extends ChangeNotifier {
       }
 
       final List<dynamic> pending = jsonDecode(pendingData);
-      var remaining = List<dynamic>.from(pending);
+      final List<dynamic> remaining = [];
 
       for (var i = 0; i < pending.length; i++) {
         try {
           await _executeAction(Map<String, dynamic>.from(pending[i]));
-          remaining = List<dynamic>.from(pending.sublist(i + 1));
         } catch (e) {
           debugPrint('Attendance action failed, keeping queued: $e');
+          remaining.addAll(pending.sublist(i));
           break;
         }
       }
@@ -168,7 +168,14 @@ class AttendanceProvider extends ChangeNotifier {
 
       _isOnline = true;
       notifyListeners();
-      await _loadFromFirestore();
+
+      try {
+        await _loadFromFirestore();
+      } catch (e) {
+        debugPrint('Reload after attendance sync failed: $e');
+        _isOnline = false;
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error syncing pending attendance records: $e');
     }

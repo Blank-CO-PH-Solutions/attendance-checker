@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -559,6 +560,9 @@ class AttendanceEventProvider extends ChangeNotifier {
             'eventId': eventId,
             'record': record.toJson(),
           });
+          if (_isNetworkError(e)) {
+            _isOnline = false;
+          }
         }
       } else {
         _addPendingAction({
@@ -590,6 +594,9 @@ class AttendanceEventProvider extends ChangeNotifier {
           'eventId': eventId,
           'recordId': recordId,
         });
+        if (_isNetworkError(e)) {
+          _isOnline = false;
+        }
       }
     } else {
       _addPendingAction({
@@ -664,6 +671,13 @@ class AttendanceEventProvider extends ChangeNotifier {
       await _cacheLocally();
       notifyListeners();
     }
+  }
+
+  bool _isNetworkError(Object error) {
+    return error is FirebaseException &&
+        (error.code == 'unavailable' ||
+            error.code == 'network-request-failed' ||
+            error.code == 'aborted');
   }
 
   Future<void> _addPendingAction(Map<String, dynamic> action) async {

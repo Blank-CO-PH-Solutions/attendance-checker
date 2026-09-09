@@ -42,8 +42,11 @@ jobs:
       - name: Build Android App Bundle
         run: flutter build appbundle --release
 
+      - name: Rename APK
+        run: mv build/app/outputs/flutter-apk/*.apk build/app/outputs/flutter-apk/attendance-checker.apk
+
       - name: Rename App Bundle
-        run: mv build/app/outputs/bundle/release/app-release.aab "build/app/outputs/bundle/release/Attendance-Checker.aab"
+        run: mv build/app/outputs/bundle/release/app-release.aab "build/app/outputs/bundle/release/attendance-checker.aab"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

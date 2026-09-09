@@ -581,7 +581,8 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
   }
 
   Widget _buildFolderContent(FolderProvider folderProvider) {
-    return Column(
+    return ListView(
+      padding: EdgeInsets.zero,
       children: [
         Container(
           padding: const EdgeInsets.all(16),

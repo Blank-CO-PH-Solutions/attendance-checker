@@ -642,8 +642,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: filteredRecords.length,
-          physics: const NeverScrollableScrollPhysics(),
-          shrinkWrap: true,
           itemBuilder: (context, index) {
             final record = filteredRecords[index];
             final isTimeIn = record.type == AttendanceType.timeIn;

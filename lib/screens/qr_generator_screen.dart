@@ -593,6 +593,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
 
   Widget _buildFolderContent(FolderProvider folderProvider) {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
         Container(

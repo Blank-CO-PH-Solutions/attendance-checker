@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -8,6 +9,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/student.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/student_qr_card.dart';
 
 class UploadedFile {
@@ -142,6 +144,8 @@ class FolderProvider extends ChangeNotifier {
   String? _selectedId;
   bool _firestoreInitialized = false;
   bool _isOnline = true;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _studentsSub;
 
   List<Folder> get folders => _folders;
   String? get selectedId => _selectedId;
@@ -157,7 +161,6 @@ class FolderProvider extends ChangeNotifier {
 
   FolderProvider() {
     _initConnectivity();
-    _loadLocal();
   }
 
   void setUserId(String userId) {
@@ -172,6 +175,19 @@ class FolderProvider extends ChangeNotifier {
 
       if (wasOffline && _isOnline) {
         _syncPendingFolderActions();
+        if (_firestoreInitialized) {
+          _listenToFirestore();
+        }
+      } else if (!_isOnline) {
+        _loadLocal();
+      }
+      notifyListeners();
+    });
+
+    ConnectivityService.checkConnectivity().then((online) {
+      _isOnline = online;
+      if (!online) {
+        _loadLocal();
       }
       notifyListeners();
     });
@@ -196,8 +212,10 @@ class FolderProvider extends ChangeNotifier {
   }
 
   void _listenToFirestore() {
+    _foldersSub?.cancel();
+    _studentsSub?.cancel();
     _firestoreInitialized = true;
-    FirebaseFirestore.instance
+    _foldersSub = FirebaseFirestore.instance
         .collection('folders')
         .snapshots()
         .listen(
@@ -207,15 +225,16 @@ class FolderProvider extends ChangeNotifier {
                 .toList();
             _reconcileFolders();
           },
-          onError: (e) {
+          onError: (e) async {
             debugPrint('Error listening to folders: $e');
-            _isOnline = false;
+            final online = await ConnectivityService.checkConnectivity();
+            _isOnline = online;
             notifyListeners();
-            _loadLocal();
+            if (!online) _loadLocal();
           },
         );
 
-    FirebaseFirestore.instance
+    _studentsSub = FirebaseFirestore.instance
         .collection('students')
         .snapshots()
         .listen(
@@ -232,11 +251,12 @@ class FolderProvider extends ChangeNotifier {
             _studentsByFolder = byFolder;
             _reconcileFolders();
           },
-          onError: (e) {
+          onError: (e) async {
             debugPrint('Error listening to students: $e');
-            _isOnline = false;
+            final online = await ConnectivityService.checkConnectivity();
+            _isOnline = online;
             notifyListeners();
-            _loadLocal();
+            if (!online) _loadLocal();
           },
         );
   }
@@ -338,7 +358,8 @@ class FolderProvider extends ChangeNotifier {
           await refresh();
         } catch (e) {
           debugPrint('Refresh after folder sync failed: $e');
-          _isOnline = false;
+          final online = await ConnectivityService.checkConnectivity();
+          _isOnline = online;
           notifyListeners();
         }
         return;
@@ -369,7 +390,8 @@ class FolderProvider extends ChangeNotifier {
         await refresh();
       } catch (e) {
         debugPrint('Refresh after folder sync failed: $e');
-        _isOnline = false;
+        final online = await ConnectivityService.checkConnectivity();
+        _isOnline = online;
         notifyListeners();
       }
     } catch (e) {
@@ -399,7 +421,6 @@ class FolderProvider extends ChangeNotifier {
         await firestore.collection('students').doc(student.id).set({
           ...student.toMap(),
           'folderId': action['folderId'],
-          'ownerId': action['ownerId'] ?? _currentUserId,
           'createdAt': FieldValue.serverTimestamp(),
         });
         break;
@@ -472,10 +493,6 @@ class FolderProvider extends ChangeNotifier {
           Folder(id: '', name: '', ownerId: '', createdAt: DateTime.now()),
     );
     if (folder.id.isEmpty) return;
-    if (folder.ownerId != _currentUserId &&
-        !folder.sharedWith.contains(_currentUserId)) {
-      return;
-    }
 
     _folders.removeWhere((f) => f.id == id);
     if (_selectedId == id) {
@@ -512,7 +529,6 @@ class FolderProvider extends ChangeNotifier {
             .set({
               ...student.toMap(),
               'folderId': folderId,
-              'ownerId': _currentUserId,
               'createdAt': FieldValue.serverTimestamp(),
             });
       } catch (e) {
@@ -521,7 +537,6 @@ class FolderProvider extends ChangeNotifier {
           'type': 'add_student',
           'folderId': folderId,
           'student': student.toMap(),
-          'ownerId': _currentUserId,
         });
       }
     } else {
@@ -529,7 +544,6 @@ class FolderProvider extends ChangeNotifier {
         'type': 'add_student',
         'folderId': folderId,
         'student': student.toMap(),
-        'ownerId': _currentUserId,
       });
     }
 

@@ -278,7 +278,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _onRefresh,
-        child: Column(
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
             _buildDaySelector(),
             _buildAmPmSelector(),
@@ -295,7 +296,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Expanded(child: _buildRecordsList()),
+            _buildRecordsList(),
           ],
         ),
       ),
@@ -642,77 +643,80 @@ class _ScannerScreenState extends State<ScannerScreen> {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: filteredRecords.length,
-          itemBuilder: (context, index) {
-            final record = filteredRecords[index];
-            final isTimeIn = record.type == AttendanceType.timeIn;
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            for (final record in filteredRecords) ...[
+              Builder(builder: (context) {
+                final isTimeIn = record.type == AttendanceType.timeIn;
+                return Container(
+                margin: const EdgeInsets.only(bottom: 8, left: 16, right: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                leading: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: isTimeIn
-                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                        : const Color(0xFFEF4444).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-                  child: Icon(
-                    isTimeIn ? Icons.login : Icons.logout,
-                    color: isTimeIn
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: isTimeIn
+                          ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                          : const Color(0xFFEF4444).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isTimeIn ? Icons.login : Icons.logout,
+                      color: isTimeIn
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                    ),
                   ),
-                ),
-                title: Text(
-                  record.student.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  '${record.student.program} • ${isTimeIn ? "Time In" : "Time Out"} • ${DateFormat('h:mm a • MMM dd').format(record.timestamp)}',
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                  title: Text(
+                    record.student.fullName,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  decoration: BoxDecoration(
-                    color: isTimeIn
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
-                    borderRadius: BorderRadius.circular(4),
+                  subtitle: Text(
+                    '${record.student.program} • ${isTimeIn ? "Time In" : "Time Out"} • ${DateFormat('h:mm a • MMM dd').format(record.timestamp)}',
                   ),
-                  child: Text(
-                    isTimeIn ? 'IN' : 'OUT',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isTimeIn
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      isTimeIn ? 'IN' : 'OUT',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+              }),
+            ],
+            const SizedBox(height: 16),
+          ],
         );
       },
     );

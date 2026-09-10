@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/student.dart';
 import '../models/attendance_record.dart';
+import '../services/connectivity_service.dart';
 
 class AttendanceProvider extends ChangeNotifier {
   List<AttendanceRecord> _records = [];
@@ -24,7 +25,6 @@ class AttendanceProvider extends ChangeNotifier {
 
   AttendanceProvider() {
     _initConnectivity();
-    _loadLocalRecords();
   }
 
   void setUserId(String userId) {
@@ -39,6 +39,14 @@ class AttendanceProvider extends ChangeNotifier {
 
       if (wasOffline && _isOnline) {
         _syncPendingActions();
+      }
+      notifyListeners();
+    });
+
+    ConnectivityService.checkConnectivity().then((online) {
+      _isOnline = online;
+      if (!online) {
+        _loadLocalRecords();
       }
       notifyListeners();
     });
@@ -173,7 +181,8 @@ class AttendanceProvider extends ChangeNotifier {
         await _loadFromFirestore();
       } catch (e) {
         debugPrint('Reload after attendance sync failed: $e');
-        _isOnline = false;
+        final online = await ConnectivityService.checkConnectivity();
+        _isOnline = online;
         notifyListeners();
       }
     } catch (e) {

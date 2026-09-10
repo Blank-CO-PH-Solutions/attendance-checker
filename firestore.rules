@@ -2,21 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isOwnerOrShared(resource) {
-      return request.auth != null && request.auth.uid == resource.data.ownerId ||
-        (resource.data.sharedWith is list && request.auth.uid in resource.data.sharedWith);
-    }
-
-    function isEventMember(eventId) {
-      return get(/databases/$(database)/documents/attendance_events/$(eventId)).data.sharedWith is list &&
-        get(/databases/$(database)/documents/attendance_events/$(eventId)).data.sharedWith.hasAny([request.auth.uid]);
-    }
-
-    function isFolderMember(folderId) {
-      return get(/databases/$(database)/documents/folders/$(folderId)).data.sharedWith is list &&
-        get(/databases/$(database)/documents/folders/$(folderId)).data.sharedWith.hasAny([request.auth.uid]);
-    }
-
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == userId;
@@ -31,31 +16,26 @@ service cloud.firestore {
 
     match /attendance_events/{eventId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isOwnerOrShared(resource);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null;
     }
 
     match /attendance_events/{eventId}/records/{recordId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null &&
-        get(/databases/$(database)/documents/attendance_events/$(eventId)).data.ownerId == request.auth.uid ||
-        isEventMember(eventId);
-      allow delete: if request.auth != null &&
-        get(/databases/$(database)/documents/attendance_events/$(eventId)).data.ownerId == request.auth.uid ||
-        isEventMember(eventId);
+      allow create, update: if request.auth != null;
+      allow delete: if request.auth != null;
     }
 
     match /folders/{folderId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isOwnerOrShared(resource);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null;
     }
 
     match /students/{studentId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null &&
-        (resource.data.ownerId == request.auth.uid || isFolderMember(resource.data.folderId));
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null;
     }
 
     match /app_config/{configId} {

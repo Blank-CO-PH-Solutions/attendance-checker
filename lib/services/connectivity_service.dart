@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class ConnectivityService {
@@ -10,4 +11,13 @@ class ConnectivityService {
 
   static Stream<List<ConnectivityResult>> get connectivityStream =>
       _connectivity.onConnectivityChanged;
+
+  static StreamSubscription<List<ConnectivityResult>> listen({
+    required void Function(bool isOnline) onChanged,
+  }) {
+    return _connectivity.onConnectivityChanged.listen((result) {
+      final isOnline = result.isNotEmpty && !result.contains(ConnectivityResult.none);
+      onChanged(isOnline);
+    });
+  }
 }

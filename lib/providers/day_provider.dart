@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/attendance_record.dart';
+import '../services/connectivity_service.dart';
 
 class AttendanceEvent {
   final String id;
@@ -133,6 +134,7 @@ class AttendanceEventProvider extends ChangeNotifier {
 
   final Map<String, List<AttendanceRecord>> _recordsByEvent = {};
   final Map<String, StreamSubscription<QuerySnapshot>> _recordSubs = {};
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _eventsSub;
 
   List<AttendanceEvent> get events => _events;
   String? get selectedEventId => _selectedEventId;
@@ -150,7 +152,6 @@ class AttendanceEventProvider extends ChangeNotifier {
 
   AttendanceEventProvider() {
     _initConnectivity();
-    _loadLocal();
   }
 
   void setUserId(String userId) {
@@ -165,6 +166,17 @@ class AttendanceEventProvider extends ChangeNotifier {
 
       if (wasOffline && _isOnline) {
         _syncPendingActions();
+        _listenToFirestore();
+      } else if (!_isOnline) {
+        _loadLocal();
+      }
+      notifyListeners();
+    });
+
+    ConnectivityService.checkConnectivity().then((online) {
+      _isOnline = online;
+      if (!online) {
+        _loadLocal();
       }
       notifyListeners();
     });
@@ -200,10 +212,16 @@ class AttendanceEventProvider extends ChangeNotifier {
   }
 
   void _listenToFirestore() {
+    _eventsSub?.cancel();
+    for (final sub in _recordSubs.values) {
+      sub.cancel();
+    }
+    _recordSubs.clear();
+
     _isLoading = true;
     notifyListeners();
 
-    _firestore.collection('attendance_events').snapshots().listen(
+    _eventsSub = _firestore.collection('attendance_events').snapshots().listen(
       (snapshot) {
         final newEvents =
             snapshot.docs
@@ -222,12 +240,13 @@ class AttendanceEventProvider extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
       },
-      onError: (e) {
+      onError: (e) async {
         debugPrint('Error listening to Firestore: $e');
-        _isOnline = false;
+        final online = await ConnectivityService.checkConnectivity();
+        _isOnline = online;
         _isLoading = false;
         notifyListeners();
-        _loadLocal();
+        if (!online) _loadLocal();
       },
     );
 
@@ -364,7 +383,8 @@ class AttendanceEventProvider extends ChangeNotifier {
         await refresh();
       } catch (e) {
         debugPrint('Refresh after sync failed: $e');
-        _isOnline = false;
+        final online = await ConnectivityService.checkConnectivity();
+        _isOnline = online;
         notifyListeners();
       }
     } catch (e) {
@@ -573,7 +593,8 @@ class AttendanceEventProvider extends ChangeNotifier {
             'record': record.toJson(),
           });
           if (_isNetworkError(e)) {
-            _isOnline = false;
+            final online = await ConnectivityService.checkConnectivity();
+            _isOnline = online;
           }
         }
       } else {
@@ -607,7 +628,8 @@ class AttendanceEventProvider extends ChangeNotifier {
           'recordId': recordId,
         });
         if (_isNetworkError(e)) {
-          _isOnline = false;
+          final online = await ConnectivityService.checkConnectivity();
+          _isOnline = online;
         }
       }
     } else {
@@ -791,7 +813,6 @@ class AttendanceEventProvider extends ChangeNotifier {
     final index = _events.indexWhere((e) => e.id == eventId);
     if (index != -1) {
       final event = _events[index];
-      if (event.ownerId != _currentUserId) return;
       if (!event.sharedWith.contains(userId)) {
         final updatedSharedWith = List<String>.from(event.sharedWith)..add(userId);
         _events[index] = event.copyWith(sharedWith: updatedSharedWith);
@@ -806,7 +827,6 @@ class AttendanceEventProvider extends ChangeNotifier {
     final index = _events.indexWhere((e) => e.id == eventId);
     if (index != -1) {
       final event = _events[index];
-      if (event.ownerId != _currentUserId) return;
       final updatedSharedWith = event.sharedWith.where((id) => id != userId).toList();
       _events[index] = event.copyWith(sharedWith: updatedSharedWith);
       await _saveToFirestore(_events[index]);

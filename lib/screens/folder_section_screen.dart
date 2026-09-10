@@ -710,6 +710,7 @@ class _FolderSectionScreenState extends State<FolderSectionScreen> {
             );
 
             return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: folder.students.isEmpty ? 1 : folder.students.length,
               itemBuilder: (context, index) {

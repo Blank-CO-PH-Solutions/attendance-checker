@@ -313,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => QrGeneratorScreen(role: role),
+                      builder: (context) => QrGeneratorScreen(role: widget.role),
                     ),
                   );
                 },
@@ -345,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => AttendanceScreen(role: role),
+                        builder: (context) => AttendanceScreen(role: widget.role),
                     ),
                   );
                 },

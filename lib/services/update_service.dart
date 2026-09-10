@@ -67,7 +67,7 @@ class UpdateService {
     required String downloadUrl,
     required bool force,
   }) async {
-    return showGeneralDialog(
+    await showGeneralDialog(
       context: context,
       barrierDismissible: !force,
       barrierLabel: 'Update',
